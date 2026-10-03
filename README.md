@@ -86,7 +86,7 @@ open out/how-costco-makes-money/changes.md
 python -m pipeline run how-costco-makes-money
 ```
 
-`changes.md` lists every change. The previous version is kept in `raw/v1/`. If it still fails, run `revise` once more, or fix `script.txt` and `facts.txt` yourself and run `python -m pipeline factcheck how-costco-makes-money`.
+`changes.md` lists every change. The previous version is kept in `raw/v1/`. After a revision the fact-check only re-checks the facts and sentences that changed; add `--full` to `factcheck` to check everything again. If it still fails, run `revise` once more, or fix `script.txt` and `facts.txt` yourself and run `python -m pipeline factcheck how-costco-makes-money`.
 
 To change one image, edit its `scene` in `shots.json`, delete `images/shot_NNN.png`, then:
 

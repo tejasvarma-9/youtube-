@@ -188,6 +188,60 @@ class StubEndToEnd(unittest.TestCase):
         self.assertEqual(cli.main(["--stub", "revise", self.slug]), 0)
         self.assertFalse((d / "raw" / "v2").exists())
 
+    def test_factcheck_rechecks_only_what_changed(self):
+        from pipeline import llm, s2_factcheck
+        for args in (["new", "How vending machines make money", "--slug", self.slug], ["script", self.slug],
+                     ["factcheck", self.slug]):
+            self.assertEqual(cli.main(["--stub", *args]), 0)
+        d = config.OUT / self.slug
+        fc = json.loads((d / "factcheck.json").read_text())
+        self.assertEqual(set(fc["verified"]), {"F1", "F2", "F3"})
+
+        script = (d / "script.txt").read_text().replace("Meet Bob.", "Meet Bob, a former bus driver.")
+        (d / "script.txt").write_text(script)
+        facts = (d / "facts.txt").read_text().replace("Host commissions are usually", "Host commissions are typically")
+        (d / "facts.txt").write_text(facts)
+        real = llm.ask
+        with mock.patch.object(s2_factcheck.llm, "ask", side_effect=real) as ask:
+            self.assertEqual(cli.main(["--stub", "factcheck", self.slug]), 0)
+        sent = ask.call_args_list[0].args[0]
+        facts_block = sent.split("<facts>")[1].split("</facts>")[0]
+        self.assertIn("F3 |", facts_block)
+        self.assertNotIn("F1 |", facts_block)
+        scope = sent.split("SCOPE:")[1].split("<script>")[0]
+        self.assertIn("Meet Bob, a former bus driver.", scope)
+        self.assertNotIn("Chocolate melts", scope)
+        self.assertEqual(len(json.loads((d / "factcheck.json").read_text())["facts"]), 3)
+
+        # Nothing changed: no Claude call at all.
+        with mock.patch.object(s2_factcheck.llm, "ask", side_effect=real) as ask:
+            self.assertEqual(cli.main(["--stub", "factcheck", self.slug]), 0)
+        ask.assert_not_called()
+        # --full checks everything again.
+        with mock.patch.object(s2_factcheck.llm, "ask", side_effect=real) as ask:
+            self.assertEqual(cli.main(["--stub", "factcheck", self.slug, "--full"]), 0)
+        self.assertIn("F1 |", ask.call_args_list[0].args[0])
+
+    def test_migrate_old_factcheck(self):
+        from pipeline import s2_factcheck
+        from pipeline.common import Video
+        for args in (["new", "How vending machines make money", "--slug", self.slug], ["script", self.slug],
+                     ["factcheck", self.slug]):
+            self.assertEqual(cli.main(["--stub", *args]), 0)
+        d = config.OUT / self.slug
+        fc = json.loads((d / "factcheck.json").read_text())
+        for k in ("verified", "clean_sentences"):
+            fc.pop(k)
+        fc["facts"][0]["verdict"] = "UNSUPPORTED"
+        fc["policy"] = [{"quote": "nobody warned Bob about that", "problem": "x", "fix": "y"}]
+        (d / "factcheck.json").write_text(json.dumps(fc))
+        s2_factcheck.migrate(Video(self.slug))
+        fc = json.loads((d / "factcheck.json").read_text())
+        self.assertEqual(set(fc["verified"]), {"F2", "F3"})
+        flagged = s2_factcheck._h("Chocolate melts in summer, and nobody warned Bob about that.")
+        self.assertNotIn(flagged, fc["clean_sentences"])
+        self.assertIn(s2_factcheck._h("Meet Bob."), fc["clean_sentences"])
+
     def test_run_without_caption_burn_in(self):
         real = s6_assemble.find_ffmpeg()[0]
         with mock.patch.object(s6_assemble, "find_ffmpeg", return_value=(real, False)):

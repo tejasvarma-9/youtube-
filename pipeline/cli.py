@@ -43,7 +43,7 @@ def run_stage(stage: str, v: Video, a) -> None:
     if stage == "script":
         s1_script.run(v, stub=a.stub)
     elif stage == "factcheck":
-        s2_factcheck.run(v, stub=a.stub)
+        s2_factcheck.run(v, stub=a.stub, full=getattr(a, "full", False))
     elif stage == "voice":
         s3_voiceover.run(v, stub=a.stub, force=a.force)
     elif stage == "shots":
@@ -154,6 +154,7 @@ def main(argv=None) -> int:
         sp.add_argument("--force", action="store_true", help="continue even though fact-check hasn't passed")
         sp.add_argument("--sync", action="store_true", help="images without batch mode: faster, twice the price")
         sp.add_argument("--no-captions", action="store_true", help="don't burn captions into the video")
+        sp.add_argument("--full", action="store_true", help="fact-check everything again, not just what changed")
     a = p.parse_args(argv)
 
     try:

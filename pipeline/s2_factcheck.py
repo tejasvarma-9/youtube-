@@ -6,25 +6,56 @@ Writes factcheck.json, factcheck.md (the readable report) and sources.md.
 
 from __future__ import annotations
 
+import hashlib
+import re
+
 from . import llm, s1_script
-from .common import StageError, Video, extract_json, fill, log, parse_sections, prompt, voice_profile
+from .common import (StageError, Video, extract_json, fill, log, parse_sections, prompt, sentences_with_paragraphs,
+                     voice_profile)
 
 BAD = {"UNSUPPORTED", "WRONG"}
 
 
-def run(video: Video, stub: bool = False) -> None:
+def run(video: Video, stub: bool = False, full: bool = False) -> None:
     lint = s1_script.check(video)
     script, facts, sources = (video.read_text(n) for n in ("script.txt", "facts.txt", "sources.txt"))
-    text = fill(prompt("factcheck.md"), SCRIPT=script, FACTS=facts, SOURCES=sources)
-    answer = llm.ask(text, "factcheck", web=True, stub=stub, context={"facts": facts})
-    video.path("raw", "factcheck_answer.md").write_text(answer)
-    result = extract_json(answer)
+    fact_lines = _fact_lines(facts)
+    urls = _source_urls(sources)
+    sentences = [r["text"] for r in sentences_with_paragraphs(script)]
 
-    fact_lines = {}
-    for line in facts.splitlines():
-        parts = [p.strip() for p in line.split("|")]
-        if len(parts) >= 3:
-            fact_lines[parts[0]] = {"claim": parts[1], "tag": parts[2]}
+    # After a revision only what changed is re-checked. A fresh full check finds a different
+    # handful of nitpicks every time, so re-checking everything never settles.
+    prev = {} if full else _previous(video)
+    if "verified" not in prev:
+        prev = {}
+    carried = []
+    for fid, f in fact_lines.items():
+        old = prev.get("verified", {}).get(fid)
+        if old and old["key"] == _fact_key(f, urls):
+            carried.append(old["result"])
+    carried_ids = {c["id"] for c in carried}
+    to_check = {fid: f for fid, f in fact_lines.items() if fid not in carried_ids}
+    clean = set(prev.get("clean_sentences", []))
+    changed = [t for t in sentences if _h(t) not in clean]
+
+    if prev and len(changed) < len(sentences):
+        log(f"  fact-check: re-checking {len(to_check)} of {len(fact_lines)} facts and {len(changed)} of "
+            f"{len(sentences)} sentences (the rest passed last time; --full re-checks everything)")
+        scope = ("This script was checked before and then revised. The fact lines below are the only ones that "
+                 "still need checking; the others were already verified. Look for missing claims and policy "
+                 "problems ONLY in these sentences, and report nothing about any other sentence:\n"
+                 + "\n".join(f"- {t}" for t in changed))
+    else:
+        scope = ("Check every fact line. Read the whole script for missing claims and policy problems.")
+    facts_text = "\n".join(f"{fid} | {f['claim']} | {f['tag']}" for fid, f in to_check.items())
+    if to_check or changed:
+        text = fill(prompt("factcheck.md"), SCRIPT=script, FACTS=facts_text or "(none)", SOURCES=sources, SCOPE=scope)
+        answer = llm.ask(text, "factcheck", web=True, stub=stub, context={"facts": facts_text})
+        video.path("raw", "factcheck_answer.md").write_text(answer)
+        result = extract_json(answer)
+    else:
+        result = {"facts": [], "policy": []}
+    result["facts"] = carried + [f for f in result.get("facts", []) if f.get("id") not in carried_ids]
 
     failures = [f for f in result.get("facts", []) if f.get("verdict", "").upper() in BAD]
     checked = {f.get("id") for f in result.get("facts", [])}
@@ -33,6 +64,7 @@ def run(video: Video, stub: bool = False) -> None:
     passed = not failures and not unchecked and not policy and not lint["errors"]
 
     result.update({"passed": passed, "unchecked": unchecked, "lint_errors": lint["errors"]})
+    result.update(_settled(result, fact_lines, urls, sentences))
     video.write_json("factcheck.json", result)
     _write_report(video, result, fact_lines)
     _write_sources(video, sources)
@@ -75,6 +107,7 @@ def revise(video: Video, stub: bool = False) -> None:
     if fc.get("passed"):
         log("  fact-check already passed; nothing to revise.")
         return
+    migrate(video)
     problems = problems_text(video)
     b = video.brief()
     files = ("script.txt", "facts.txt", "sources.txt")
@@ -103,6 +136,69 @@ def revise(video: Video, stub: bool = False) -> None:
         if line.strip():
             log(f"    {line.strip()}")
     run(video, stub=stub)
+
+
+def _settled(result: dict, fact_lines: dict, urls: dict, sentences: list) -> dict:
+    """What the next check can skip: facts that passed (with what they said and cited), and sentences
+    that contain nothing that was flagged."""
+    verified = {f["id"]: {"key": _fact_key(fact_lines[f["id"]], urls), "result": f}
+                for f in result.get("facts", []) if f.get("id") in fact_lines and f.get("verdict", "").upper() not in BAD}
+    bad_new = [f for f in result.get("facts", []) if f.get("verdict", "").upper() in BAD and f.get("id") not in fact_lines]
+    quotes = [" ".join(f.get("claim", "").split()) for f in bad_new] + \
+             [" ".join(p.get("quote", "").split()) for p in result.get("policy", [])]
+    norm = [" ".join(t.split()) for t in sentences]
+    hit = [any(q and (q in t or t in q) for q in quotes) for t in norm]
+    placed = all(q and any(q in t or t in q for t in norm) for q in quotes)
+    # A flagged quote we can't find in any one sentence means the whole script gets read again next time.
+    clean = [_h(t) for t, h in zip(sentences, hit) if not h] if placed else []
+    return {"verified": verified, "clean_sentences": clean}
+
+
+def migrate(video: Video) -> None:
+    """Fact-checks from before incremental checking didn't record what passed. Work it out from the
+    files they checked, so the next check can still skip what is settled."""
+    fc = _previous(video)
+    if not fc or "verified" in fc:
+        return
+    script, facts, sources = (video.read_text(n) for n in ("script.txt", "facts.txt", "sources.txt"))
+    sentences = [r["text"] for r in sentences_with_paragraphs(script)]
+    fc.update(_settled(fc, _fact_lines(facts), _source_urls(sources), sentences))
+    video.write_json("factcheck.json", fc)
+
+
+def _fact_lines(facts: str) -> dict:
+    out = {}
+    for line in facts.splitlines():
+        parts = [p.strip() for p in line.split("|")]
+        if len(parts) >= 3:
+            out[parts[0]] = {"claim": parts[1], "tag": parts[2]}
+    return out
+
+
+def _source_urls(sources: str) -> dict:
+    out = {}
+    for line in sources.splitlines():
+        parts = [p.strip() for p in line.split("|")]
+        if len(parts) >= 3:
+            out[parts[0]] = parts[2]
+    return out
+
+
+def _fact_key(f: dict, urls: dict) -> str:
+    """A fact counts as unchanged only if its words, its tag and the URL behind its source are all the same."""
+    cited = " ".join(urls.get(t, t) for t in re.findall(r"S\d+|ESTIMATE", f["tag"].upper()))
+    return _h(f"{f['claim']}|{f['tag']}|{cited}")
+
+
+def _h(text: str) -> str:
+    return hashlib.sha1(" ".join(text.split()).encode()).hexdigest()[:16]
+
+
+def _previous(video: Video) -> dict:
+    try:
+        return video.read_json("factcheck.json")
+    except StageError:
+        return {}
 
 
 def require_pass(video: Video, force: bool) -> None:
