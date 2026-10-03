@@ -119,7 +119,7 @@ python -m pipeline status
 |---|---|---|---|
 | Script | `script` | Claude Code with web research | `script.txt`, `facts.txt`, `sources.txt` |
 | Fact-check | `factcheck` | Claude Code fetches every source; rule checks | `factcheck.md`, `sources.md` (blocks the rest if it fails) |
-| Voiceover | `voice` | Gemini voice model, one request per sentence | `voiceover.wav`, `timeline.json` |
+| Voiceover | `voice` | Gemini voice model, about 7 requests per video (a few paragraphs each) | `voiceover.wav`, `timeline.json` |
 | Shots | `shots` | Claude Code writes one scene per 10+ seconds | `shots.json` |
 | Images | `images` | Gemini 3.1 Flash Lite Image, batch mode | `images/` |
 | Assembly | `assemble` | ffmpeg: slow zoom and pan, burned-in captions | `video.mp4`, `captions.srt` |
@@ -147,6 +147,8 @@ The image count is the cost lever. `MIN_SHOT_SECONDS=10` in `.env` keeps each im
 | `GEMINI_TTS_VOICE` | `Charon` | Other voices to try: Orus, Iapetus, Fenrir, Puck |
 | `GEMINI_TTS_STYLE` | calm, confident, slightly wry narrator | The delivery instruction sent with every sentence |
 | `TTS_PROVIDER` | `gemini` | `chirp` for Google Cloud Chirp 3 HD (needs Cloud billing) |
+| `GEMINI_TTS_MODEL` | `gemini-3.8-flash-lite-tts` | The voice model. Each model has its own daily request limit; `gemini-2.5-flash-preview-tts` is a paid fallback ($10 per million audio tokens, about $0.17 a video) |
+| `GEMINI_TTS_CHUNK_CHARS` | `1500` | Text per voice request. Google limits requests per day (100 on the default model), so the script goes out in chunks. Lower it (800) if the voice cuts passages short |
 | `GEMINI_TTS_MIN_INTERVAL_S` | `0` | Seconds to wait between voice requests. Set to `7` if the voice step keeps hitting rate limits |
 | `MIN_SHOT_SECONDS` | `10` | Lower means more images and more cost |
 | `CLAUDE_MODEL` | Claude Code's default | |

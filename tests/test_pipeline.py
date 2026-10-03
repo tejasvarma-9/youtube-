@@ -130,6 +130,55 @@ class GeminiVoiceTests(unittest.TestCase):
         self.assertAlmostEqual(config.voice_cost("gemini", 840, 14000), 0.126, places=3)
 
 
+class VoiceChunkTests(unittest.TestCase):
+    RATE = 24000
+
+    def _speech(self, seconds):
+        import array
+        a = array.array("h", [0] * int(self.RATE * seconds))
+        for i in range(len(a)):
+            a[i] = 8000 if (i // 40) % 2 else -8000  # a loud square wave stands in for speech
+        return a.tobytes()
+
+    def _silence(self, seconds):
+        return b"\x00\x00" * int(self.RATE * seconds)
+
+    def test_boundaries_land_on_the_pauses_between_sentences_not_commas(self):
+        # Three sentences of 40, 80 and 40 characters. The second has a short pause (a comma) in the middle.
+        pcm = (self._speech(3.0) + self._silence(0.5) +
+               self._speech(2.5) + self._silence(0.2) + self._speech(3.5) + self._silence(0.5) +
+               self._speech(3.0))
+        start, end, bounds = s3_voiceover._locate_sentences(pcm, [40, 80, 40])
+        self.assertAlmostEqual(start, 0.0, delta=0.05)
+        self.assertAlmostEqual(end, 13.2, delta=0.2)
+        self.assertEqual(len(bounds), 2)
+        self.assertAlmostEqual(bounds[0], 3.25, delta=0.1)
+        self.assertAlmostEqual(bounds[1], 9.95, delta=0.1)
+
+    def test_falls_back_to_proportional_timing_without_pauses(self):
+        pcm = self._speech(10.0)
+        start, end, bounds = s3_voiceover._locate_sentences(pcm, [50, 50])
+        self.assertAlmostEqual(bounds[0], 5.0, delta=0.4)
+        self.assertEqual(s3_voiceover._locate_sentences(self._silence(4.0), [10, 30])[2], [1.0])
+
+    def test_chunks_hold_whole_paragraphs_and_split_a_long_one(self):
+        rows = sentences_with_paragraphs("Alpha runs first. Beta runs next.\n\nGamma comes later. Delta ends it.\n\n" + " ".join(f"Long {i} here." for i in range(10)))
+        chunks = s3_voiceover._chunk_rows(rows, 40)
+        self.assertEqual(sum(len(c) for c in chunks), len(rows))
+        self.assertEqual([r["paragraph"] for r in chunks[0]], [0, 0])  # a short paragraph is never split
+        self.assertEqual([r["paragraph"] for r in chunks[1]], [1, 1])
+        self.assertGreater(len(chunks), 3)  # the long paragraph was split into several
+        for c in chunks:
+            self.assertLessEqual(sum(len(r["text"]) + 1 for r in c), 40 + 16)
+        self.assertEqual(s3_voiceover._chunk_text(chunks[0]), "Alpha runs first. Beta runs next.")
+
+    def test_a_video_needs_far_fewer_requests_than_sentences(self):
+        script = "\n\n".join(" ".join(f"This is sentence number {p}.{i} of the script." for i in range(4)) for p in range(30))
+        rows = sentences_with_paragraphs(script)
+        self.assertEqual(len(rows), 120)
+        self.assertLess(len(s3_voiceover._chunk_rows(rows, 1500)), 12)
+
+
 class FfmpegDetectionTests(unittest.TestCase):
     PLAIN = " ... zoompan  V->V\n"
     FULL = " ... zoompan  V->V\n ... subtitles  V->V\n"
