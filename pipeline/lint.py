@@ -1,0 +1,106 @@
+"""Rule checks that need no model: script format and policy, titles, chapters."""
+
+from __future__ import annotations
+
+import re
+
+from . import config
+from .common import word_count
+
+BANNED = [
+    (r"\bsubscribe\b", "no subscribe call to action"),
+    (r"\b(like and|hit the bell|smash that)\b", "no engagement bait"),
+    (r"\bsponsor(ed)? by\b|\btoday'?s sponsor\b", "no sponsor reads"),
+    (r"\b(welcome back|hey guys|hi everyone|in this video)\b", "no greeting or channel intro"),
+    (r"\byou will (earn|make)\b|\bguaranteed (income|returns?)\b", "never promise viewers income"),
+    (r"\b(you should|go) (buy|sell|short)\b|\b(buy|sell|hold) (the|this) stock\b|\bgood investment\b", "no buy/sell/hold advice"),
+    (r"\b(the market|stocks?) will (crash|rise|fall|soar)\b", "no market predictions"),
+    (r"\bso you want to own\b", "that title format belongs to another channel"),
+]
+
+FORMAT = [
+    (r"^\s*#", "headings"),
+    (r"^\s*([-*•]|\d+[.)])\s", "bullets or numbered list lines"),
+    (r"\[(music|sfx|scene|cut|b-?roll)[^\]]*\]", "scene or music tags"),
+    (r"\b\d{1,2}:\d{2}\b", "timestamps"),
+]
+
+# "$2-5 million", "$2 to5 million", "$2M-$5M": ranges the voice will read badly.
+GARBLED_RANGE = re.compile(r"\$\d[\d,.]*\s*(?:-|–|to)\s*\d[\d,.]*\s*(million|billion|thousand|k|m|bn)\b|\$\d[\d,.]*\s*(?:to)\d|\$\d[\d,.]*[kKmMbB]\b")
+NUMBER = re.compile(r"\$?\d[\d,]*(?:\.\d+)?%?")
+
+
+def _numbers(text: str) -> set[str]:
+    out = set()
+    for raw in NUMBER.findall(text):
+        n = raw.replace(",", "").replace("$", "").rstrip("%").rstrip(".")
+        if not n:
+            continue
+        if re.fullmatch(r"(19|20)\d\d", n):  # years are dates, not figures
+            continue
+        if re.fullmatch(r"\d", n) and "$" not in raw and "%" not in raw:  # "3 reasons"
+            continue
+        out.add(n)
+    return out
+
+
+def lint_script(script: str, facts: str) -> dict:
+    errors, warnings = [], []
+    words = word_count(script)
+    if words < config.WORDS_MIN * 0.9 or words > config.WORDS_MAX * 1.1:
+        warnings.append(f"Length is {words} words; the target is {config.WORDS_MIN} to {config.WORDS_MAX}.")
+    for pat, why in BANNED:
+        for m in re.finditer(pat, script, re.I):
+            errors.append(f"Policy: \"{m.group(0)}\" ({why}).")
+    for pat, what in FORMAT:
+        if re.search(pat, script, re.I | re.M):
+            errors.append(f"Format: the script contains {what}; it must be clean prose.")
+    for m in GARBLED_RANGE.finditer(script):
+        errors.append(f"Number format: \"{m.group(0)}\" will be read badly; write it out in full, like \"$2 million to $5 million\".")
+
+    fact_numbers = _numbers(facts)
+    missing = sorted(_numbers(script) - fact_numbers, key=lambda s: float(s) if s.replace(".", "").isdigit() else 0)
+    for n in missing:
+        errors.append(f"Unchecked figure: {n} appears in the script but not in the fact list.")
+
+    for line in facts.splitlines():
+        parts = [p.strip() for p in line.split("|")]
+        if line.strip() and (len(parts) < 3 or not re.fullmatch(r"S\d+|ESTIMATE", parts[2], re.I)):
+            errors.append(f"Fact line has no source or ESTIMATE tag: {line.strip()[:120]}")
+    return {"words": words, "errors": errors, "warnings": warnings}
+
+
+def lint_title(title: str, thumb_text: str) -> list[str]:
+    """Title and thumbnail text checked as a pair."""
+    problems = []
+    if len(title) > 60:
+        problems.append(f"Title is {len(title)} characters; keep it under 60 so it isn't cut off.")
+    if len(title) > 40 and not re.search(r"\b[A-Z][a-z]+", title[:40]):
+        problems.append("The subject should appear in the first 40 characters.")
+    if re.search(r"so you want to own", title, re.I):
+        problems.append("\"So You Want to Own\" is another channel's format.")
+    if re.search(r"[!]{2,}|\b(SHOCKING|INSANE|YOU WON'T BELIEVE)\b", title, re.I):
+        problems.append("Clickbait wording; the channel's tone is dry and confident.")
+    tw = len(thumb_text.split())
+    if not 2 <= tw <= 7:
+        problems.append(f"Thumbnail text has {tw} words; aim for 3 to 6.")
+    stop = {"the", "a", "an", "of", "to", "how", "why", "is", "for", "who", "does", "and", "in", "on"}
+    title_words = {w.lower() for w in re.findall(r"[A-Za-z']+", title)} - stop
+    thumb_words = {w.lower() for w in re.findall(r"[A-Za-z']+", thumb_text)} - stop
+    overlap = title_words & thumb_words
+    if len(overlap) >= 2:
+        problems.append(f"Thumbnail text repeats the title ({', '.join(sorted(overlap))}); it should add something new.")
+    return problems
+
+
+def validate_chapters(chapters: list[dict], duration: float) -> list[str]:
+    """YouTube's rules: first at 0:00, at least 3, each at least 10 seconds long."""
+    problems = []
+    if len(chapters) < 3:
+        problems.append("YouTube needs at least 3 chapters.")
+    if chapters and chapters[0]["start"] != 0:
+        problems.append("The first chapter must start at 0:00.")
+    for a, b in zip(chapters, chapters[1:] + [{"start": duration}]):
+        if b["start"] - a["start"] < 10:
+            problems.append(f"Chapter \"{a['title']}\" is shorter than 10 seconds.")
+    return problems

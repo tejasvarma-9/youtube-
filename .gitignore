@@ -1,0 +1,10 @@
+.env
+*.json.key
+client_secret*.json
+token*.json
+__pycache__/
+*.pyc
+.venv/
+out/
+.DS_Store
+assets/style-refs/candidates/
