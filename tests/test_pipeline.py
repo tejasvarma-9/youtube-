@@ -1,10 +1,12 @@
 """Run with: python -m unittest discover tests"""
 
+import base64
 import json
 import shutil
 import unittest
+from unittest import mock
 
-from pipeline import cli, config
+from pipeline import cli, config, s3_voiceover
 from pipeline.common import extract_json, parse_sections, sentences_with_paragraphs, split_sentences
 from pipeline.lint import lint_script, lint_title, validate_chapters
 from pipeline.s4_shots import group
@@ -69,6 +71,42 @@ class TimingTests(unittest.TestCase):
         chunks = caption_chunks("A vending machine in a busy hospital hallway can quietly earn more than you think.")
         self.assertTrue(all(len(c) <= 45 for c in chunks))
         self.assertGreater(len(chunks[-1].split()), 1)
+
+
+class GeminiVoiceTests(unittest.TestCase):
+    def _resp(self, status, payload):
+        r = mock.Mock(status_code=status, text=json.dumps(payload))
+        r.json.return_value = payload
+        return r
+
+    def test_returns_pcm_and_sends_voice_and_style(self):
+        pcm = b"\x01\x00" * 100
+        ok = {"candidates": [{"content": {"parts": [{"inlineData": {"mimeType": "audio/L16;rate=24000",
+                                                                  "data": base64.b64encode(pcm).decode()}}]}}]}
+        with mock.patch.object(config, "GOOGLE_API_KEY", "k"), \
+                mock.patch("pipeline.s3_voiceover.requests.post", return_value=self._resp(200, ok)) as post:
+            self.assertEqual(s3_voiceover._gemini("Hello there."), pcm)
+        body = post.call_args.kwargs["json"]
+        self.assertEqual(body["generationConfig"]["responseModalities"], ["AUDIO"])
+        self.assertEqual(body["generationConfig"]["speechConfig"]["voiceConfig"]["prebuiltVoiceConfig"]["voiceName"], config.GEMINI_TTS_VOICE)
+        self.assertTrue(body["contents"][0]["parts"][0]["text"].endswith("Hello there."))
+        self.assertEqual(post.call_args.kwargs["headers"], {"x-goog-api-key": "k"})
+
+    def test_retries_when_no_audio_then_succeeds(self):
+        empty = {"candidates": [{"content": {"parts": [{"text": "no"}]}}]}
+        pcm = b"\x02\x00" * 10
+        ok = {"candidates": [{"content": {"parts": [{"inlineData": {"data": base64.b64encode(pcm).decode()}}]}}]}
+        with mock.patch("pipeline.s3_voiceover.requests.post", side_effect=[self._resp(200, empty), self._resp(200, ok)]), \
+                mock.patch("pipeline.s3_voiceover.time.sleep"):
+            self.assertEqual(s3_voiceover._gemini("Hi."), pcm)
+
+    def test_hard_error_stops(self):
+        with mock.patch("pipeline.s3_voiceover.requests.post", return_value=self._resp(403, {"error": "denied"})):
+            with self.assertRaises(cli.StageError):
+                s3_voiceover._gemini("Hi.")
+
+    def test_cost(self):
+        self.assertAlmostEqual(config.voice_cost("gemini", 840, 14000), 0.126, places=3)
 
 
 class StubEndToEnd(unittest.TestCase):

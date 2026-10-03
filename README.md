@@ -7,7 +7,7 @@ Everything runs on your Mac. The channel's voice, structure and visual rules liv
 ## 1. One-time setup
 
 ```bash
-git clone https://github.com/tejasvarma-9/youtube-.git ~/who-pays-who
+git clone -b claude/video-pipeline-jnnk29 https://github.com/tejasvarma-9/youtube-.git ~/who-pays-who
 cd ~/who-pays-who
 python3 -m venv .venv
 source .venv/bin/activate
@@ -23,15 +23,17 @@ python -m pipeline doctor
 
 ## 2. The Google key (do this once, never paste it in chat)
 
-1. Go to https://aistudio.google.com/apikey and click **Create API key**. Create it in a new project called `who-pays-who`.
-2. On that project, turn on billing (the image model has no free tier), then turn on Text-to-Speech: https://console.cloud.google.com/apis/library/texttospeech.googleapis.com
-3. In https://console.cloud.google.com/apis/credentials open the key. Under **API restrictions**, allow both **Generative Language API** and **Cloud Text-to-Speech API**.
-4. Set a budget alert at $15: https://console.cloud.google.com/billing/budgets
-5. Open the `.env` file and paste the key after `GOOGLE_API_KEY=`:
+One key covers images and the voiceover.
+
+1. Go to https://aistudio.google.com/apikey. Under **Projects** choose **Create a new project** and name it `who-pays-who`, then **Create API key** and pick that project.
+2. Set up billing for that project from the AI Studio **Projects** page. Prepaid credits work: they pay for both images and voice, and the balance is a hard spending cap. Turn **auto-reload** off. About 1,000 rupees covers roughly the first month.
+3. Open the `.env` file and paste the key after `GOOGLE_API_KEY=`:
 
 ```bash
 open -e .env
 ```
+
+Prepaid Gemini credits only pay for the Gemini API, not for other Google Cloud services. That is why the voice defaults to the Gemini voice model. To use Google Cloud's Chirp 3 HD voice instead, set `TTS_PROVIDER=chirp` in `.env`, turn on Cloud Text-to-Speech, and link a regular Google Cloud billing account.
 
 ## 3. Try it with no keys
 
@@ -94,7 +96,7 @@ python -m pipeline status
 |---|---|---|---|
 | Script | `script` | Claude Code with web research | `script.txt`, `facts.txt`, `sources.txt` |
 | Fact-check | `factcheck` | Claude Code fetches every source; rule checks | `factcheck.md`, `sources.md` (blocks the rest if it fails) |
-| Voiceover | `voice` | Google Chirp 3 HD, one request per sentence | `voiceover.wav`, `timeline.json` |
+| Voiceover | `voice` | Gemini voice model, one request per sentence | `voiceover.wav`, `timeline.json` |
 | Shots | `shots` | Claude Code writes one scene per 10+ seconds | `shots.json` |
 | Images | `images` | Gemini 3.1 Flash Lite Image, batch mode | `images/` |
 | Assembly | `assemble` | ffmpeg: slow zoom and pan, burned-in captions | `video.mp4`, `captions.srt` |
@@ -110,7 +112,7 @@ python -m pipeline status
 |---|---|---|
 | Images, about 70 per video at $0.0168 (batch) | about $1.20 | about $15 |
 | Thumbnail art, 1 image | $0.03 | $0.40 |
-| Voice, about 14,000 characters | $0 | $0 (1M characters free, about 170,000 used) |
+| Voice, about 14 minutes of audio (Gemini, $6 per million audio tokens; doubles in January 2027) | about $0.13 | about $1.70 |
 | Script, fact-check, shots, metadata | $0 | $0 (your Claude plan) |
 
 The image count is the cost lever. `MIN_SHOT_SECONDS=10` in `.env` keeps each image on screen for at least 10 seconds. Setting it to 6 matches the style spec's one image per sentence, but roughly doubles the image bill to about $30 a month.
@@ -119,8 +121,9 @@ The image count is the cost lever. `MIN_SHOT_SECONDS=10` in `.env` keeps each im
 
 | Setting | Default | |
 |---|---|---|
-| `TTS_VOICE` | `en-US-Chirp3-HD-Charon` | Other male voices to try: Orus, Iapetus, Algieba |
-| `TTS_PACE` | `1.0` | 0.25 to 2.0 |
+| `GEMINI_TTS_VOICE` | `Charon` | Other voices to try: Orus, Iapetus, Fenrir, Puck |
+| `GEMINI_TTS_STYLE` | calm, confident, slightly wry narrator | The delivery instruction sent with every sentence |
+| `TTS_PROVIDER` | `gemini` | `chirp` for Google Cloud Chirp 3 HD (needs Cloud billing) |
 | `MIN_SHOT_SECONDS` | `10` | Lower means more images and more cost |
 | `CLAUDE_MODEL` | Claude Code's default | |
 

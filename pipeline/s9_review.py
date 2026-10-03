@@ -42,7 +42,11 @@ def run(video: Video, stub: bool = False) -> None:
         _link(src, review / name)
 
     img_cost = len(shots) * config.PRICE_PER_IMAGE_BATCH + config.PRICE_PER_IMAGE_SYNC
-    tts_cost_if_over = tl["characters"] * config.PRICE_PER_TTS_CHAR
+    provider = tl.get("provider", "chirp")
+    voice_cost = config.voice_cost(provider, tl["duration"], tl["characters"])
+    voice_note = (f"Voice: about ${voice_cost:.2f} (Gemini voice)" if provider == "gemini" else
+                  f"Voice: {tl['characters']:,} characters, free under {config.TTS_FREE_CHARS_PER_MONTH:,} a month "
+                  f"(${voice_cost:.2f} if over)")
     verdicts = {}
     for f in fc.get("facts", []):
         verdicts[f.get("verdict", "?")] = verdicts.get(f.get("verdict", "?"), 0) + 1
@@ -55,8 +59,7 @@ def run(video: Video, stub: bool = False) -> None:
         "",
         f"- **Length:** {tl['duration'] / 60:.1f} minutes, {lint['words']:,} words, {len(shots)} images",
         f"- **Fact-check:** {'passed' if fc.get('passed') else 'FAILED'} ({', '.join(f'{v} {k.lower()}' for k, v in sorted(verdicts.items()))})",
-        f"- **Cost of this video:** about ${img_cost:.2f} in images. Voice: {tl['characters']:,} characters, "
-        f"free under {config.TTS_FREE_CHARS_PER_MONTH:,} a month (${tts_cost_if_over:.2f} if over).",
+        f"- **Cost of this video:** about ${img_cost:.2f} in images. {voice_note}.",
         "",
         "## Watch these",
         "",

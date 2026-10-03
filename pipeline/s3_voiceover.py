@@ -1,4 +1,4 @@
-"""Stage 3: voiceover with Google Chirp 3 HD, one request per sentence.
+"""Stage 3: voiceover, one request per sentence (Gemini voice by default, Chirp 3 HD optional).
 
 Synthesizing sentence by sentence gives exact timings for images and captions,
 and means an edit to one sentence only re-records that sentence.
@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import struct
+import time
 import wave
 
 import requests
@@ -23,20 +24,25 @@ TTS_URL = "https://texttospeech.googleapis.com/v1/text:synthesize"
 
 def run(video: Video, stub: bool = False, force: bool = False) -> None:
     s2_factcheck.require_pass(video, force)
-    if not stub and not config.GOOGLE_TTS_API_KEY:
+    provider = config.TTS_PROVIDER
+    if provider not in ("gemini", "chirp"):
+        raise StageError(f"TTS_PROVIDER must be 'gemini' or 'chirp', not '{provider}'.")
+    key = config.GOOGLE_API_KEY if provider == "gemini" else config.GOOGLE_TTS_API_KEY
+    if not stub and not key:
         raise StageError("GOOGLE_API_KEY is empty. Put it in the .env file (see README), or run with --stub.")
 
     rows = sentences_with_paragraphs(video.read_text("script.txt"))
-    voice = "stub" if stub else config.TTS_VOICE
+    voice = "stub" if stub else (config.GEMINI_TTS_VOICE if provider == "gemini" else config.TTS_VOICE)
+    voice_id = f"{provider}:{config.GEMINI_TTS_MODEL}:{voice}" if provider == "gemini" else f"{provider}:{voice}"
     chars = sum(len(r["text"]) for r in rows)
     log(f"  voiceover: {len(rows)} sentences, {chars:,} characters, voice {voice}")
 
     new_chars = 0
     for r in rows:
-        key = hashlib.sha1(f"{voice}|{config.TTS_PACE}|{r['text']}".encode()).hexdigest()[:12]
+        key = hashlib.sha1(f"{voice_id}|{config.TTS_PACE}|{config.GEMINI_TTS_STYLE}|{r['text']}".encode()).hexdigest()[:12]
         wav = video.path("audio", f"{key}.wav")
         if not wav.exists():
-            pcm = _stub_pcm(r["text"]) if stub else _synthesize(r["text"])
+            pcm = _stub_pcm(r["text"]) if stub else (_gemini(r["text"]) if provider == "gemini" else _synthesize(r["text"]))
             _write_wav(wav, pcm)
             new_chars += len(r["text"])
         r["audio"] = str(wav.relative_to(video.dir))
@@ -61,9 +67,37 @@ def run(video: Video, stub: bool = False, force: bool = False) -> None:
     _write_wav(video.path("voiceover.wav"), bytes(pcm_all))
 
     total = len(pcm_all) / 2 / RATE
-    video.write_json("timeline.json", {"voice": voice, "duration": round(total, 3), "characters": chars,
+    video.write_json("timeline.json", {"voice": voice, "provider": "stub" if stub else provider, "duration": round(total, 3), "characters": chars,
                                        "new_characters": new_chars, "sentences": rows})
     log(f"  voiceover: {total / 60:.1f} minutes ({new_chars:,} characters newly synthesized)")
+
+
+def _gemini(text: str) -> bytes:
+    """One sentence through the Gemini API's voice model; returns raw 24 kHz 16-bit mono PCM."""
+    body = {
+        "contents": [{"parts": [{"text": f"{config.GEMINI_TTS_STYLE}: {text}"}]}],
+        "generationConfig": {
+            "responseModalities": ["AUDIO"],
+            "speechConfig": {"voiceConfig": {"prebuiltVoiceConfig": {"voiceName": config.GEMINI_TTS_VOICE}}},
+        },
+    }
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{config.GEMINI_TTS_MODEL}:generateContent"
+    last = ""
+    for attempt in range(5):
+        res = requests.post(url, json=body, headers={"x-goog-api-key": config.GOOGLE_API_KEY}, timeout=120)
+        if res.status_code == 200:
+            for cand in res.json().get("candidates", []):
+                for part in (cand.get("content") or {}).get("parts", []):
+                    blob = part.get("inlineData") or part.get("inline_data")
+                    if blob and blob.get("data"):
+                        return base64.b64decode(blob["data"])
+            last = "the model returned no audio"  # happens occasionally; retrying usually works
+        elif res.status_code in (429, 500, 503) or res.status_code == 400 and "audio" in res.text.lower():
+            last = f"{res.status_code} {res.text[:200]}"
+        else:
+            raise StageError(f"Gemini voice returned {res.status_code}: {res.text[:400]}")
+        time.sleep(2 ** (attempt + 1))
+    raise StageError(f"Gemini voice failed after 5 tries for: \"{text[:60]}...\" ({last}). Re-run to retry just the missing sentences.")
 
 
 def _synthesize(text: str) -> bytes:
@@ -79,8 +113,6 @@ def _synthesize(text: str) -> bytes:
         if res.status_code == 200:
             break
         if res.status_code in (429, 500, 503) and attempt < 3:
-            import time
-
             time.sleep(2 ** (attempt + 1))
             continue
         hint = ""

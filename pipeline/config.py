@@ -34,10 +34,16 @@ CLAUDE_BIN = env("CLAUDE_BIN", "claude")
 CLAUDE_MODEL = env("CLAUDE_MODEL")  # empty = Claude Code's default model
 CLAUDE_TIMEOUT_S = int(env("CLAUDE_TIMEOUT_S", "1800"))
 
-# Voiceover: Google Cloud Text-to-Speech, Chirp 3 HD (1M characters/month free).
-TTS_VOICE = env("TTS_VOICE", "en-US-Chirp3-HD-Charon")
+# Voiceover. Default is the Gemini API's voice model: same key and same prepaid credits as images.
+# Set TTS_PROVIDER=chirp to use Google Cloud Text-to-Speech (Chirp 3 HD) instead; that needs
+# Cloud billing, which prepaid Gemini credits do not cover.
+TTS_PROVIDER = env("TTS_PROVIDER", "gemini").lower()
+GEMINI_TTS_MODEL = env("GEMINI_TTS_MODEL", "gemini-3.8-flash-lite-tts")
+GEMINI_TTS_VOICE = env("GEMINI_TTS_VOICE", "Charon")
+GEMINI_TTS_STYLE = env("GEMINI_TTS_STYLE", "Say in a calm, confident, slightly wry documentary narrator voice at a steady pace")
+TTS_VOICE = env("TTS_VOICE", "en-US-Chirp3-HD-Charon")  # chirp only
 TTS_LANGUAGE = "en-US"
-TTS_PACE = float(env("TTS_PACE", "1.0"))  # Chirp 3 HD accepts 0.25 to 2.0
+TTS_PACE = float(env("TTS_PACE", "1.0"))  # chirp only: 0.25 to 2.0
 SENTENCE_GAP_S = 0.18  # silence between sentences
 PARAGRAPH_GAP_S = 0.45  # extra silence between paragraphs
 
@@ -57,8 +63,18 @@ MAX_SHOT_SECONDS = 18.0
 # Prices used for the cost line in the review package (USD, checked 2026-10-03).
 PRICE_PER_IMAGE_BATCH = 0.0168
 PRICE_PER_IMAGE_SYNC = 0.0336
-TTS_FREE_CHARS_PER_MONTH = 1_000_000
-PRICE_PER_TTS_CHAR = 0.00003
+TTS_FREE_CHARS_PER_MONTH = 1_000_000  # chirp
+PRICE_PER_TTS_CHAR = 0.00003  # chirp
+GEMINI_TTS_USD_PER_M_AUDIO_TOKENS = 6.00  # flash-lite-tts; doubles from 2027-01-01
+GEMINI_AUDIO_TOKENS_PER_SECOND = 25
+
+
+def voice_cost(provider: str, seconds: float, chars: int) -> float:
+    if provider == "chirp":
+        return chars * PRICE_PER_TTS_CHAR  # free under 1M characters a month
+    if provider == "gemini":
+        return seconds * GEMINI_AUDIO_TOKENS_PER_SECOND * GEMINI_TTS_USD_PER_M_AUDIO_TOKENS / 1e6
+    return 0.0
 
 # Video.
 WIDTH, HEIGHT, FPS = 1920, 1080, 30
