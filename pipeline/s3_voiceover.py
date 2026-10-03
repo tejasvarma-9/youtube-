@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import re
 import struct
 import time
 import wave
@@ -72,6 +73,22 @@ def run(video: Video, stub: bool = False, force: bool = False) -> None:
     log(f"  voiceover: {total / 60:.1f} minutes ({new_chars:,} characters newly synthesized)")
 
 
+_last_call = [0.0]
+
+
+def _retry_delay(res) -> float:
+    """How long Google says to wait before retrying ('retryDelay': '23s'), or 0 if it doesn't say."""
+    try:
+        for d in res.json().get("error", {}).get("details", []):
+            m = re.fullmatch(r"([\d.]+)s", str(d.get("retryDelay", "")))
+            if m:
+                return float(m.group(1))
+    except (ValueError, AttributeError):
+        pass
+    m = re.search(r"retry in ([\d.]+)s", res.text)
+    return float(m.group(1)) if m else 0.0
+
+
 def _gemini(text: str, voice: str | None = None) -> bytes:
     """One sentence through the Gemini API's voice model; returns raw 24 kHz 16-bit mono PCM."""
     body = {
@@ -83,8 +100,13 @@ def _gemini(text: str, voice: str | None = None) -> bytes:
     }
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{config.GEMINI_TTS_MODEL}:generateContent"
     last = ""
-    for attempt in range(5):
+    for attempt in range(8):
+        wait = config.GEMINI_TTS_MIN_INTERVAL_S - (time.monotonic() - _last_call[0])
+        if wait > 0:
+            time.sleep(wait)
+        _last_call[0] = time.monotonic()
         res = requests.post(url, json=body, headers={"x-goog-api-key": config.GOOGLE_API_KEY}, timeout=120)
+        delay = 2 ** (attempt + 1)
         if res.status_code == 200:
             for cand in res.json().get("candidates", []):
                 for part in (cand.get("content") or {}).get("parts", []):
@@ -92,12 +114,25 @@ def _gemini(text: str, voice: str | None = None) -> bytes:
                     if blob and blob.get("data"):
                         return base64.b64decode(blob["data"])
             last = "the model returned no audio"  # happens occasionally; retrying usually works
-        elif res.status_code in (429, 500, 503) or res.status_code == 400 and "audio" in res.text.lower():
-            last = f"{res.status_code} {res.text[:200]}"
+        elif res.status_code == 429:
+            low = res.text.lower()
+            if "perday" in low.replace(" ", "").replace("_", "") or "per day" in low or "limit: 0" in low:
+                raise StageError(
+                    "Gemini voice says the quota for this key is used up or not available "
+                    "(a daily limit, or no paid billing on this key's project). Details from Google:\n"
+                    f"{res.text[:900]}\n"
+                    "Check the credit balance and billing status at https://aistudio.google.com/billing, then re-run. "
+                    "Sentences already recorded are kept.")
+            # A per-minute limit: wait as long as Google asks (at least 15s, growing), then try again.
+            delay = max(_retry_delay(res) + 1, 15 * (attempt + 1))
+            last = f"429 rate limit, waiting {delay:.0f}s: {res.text[:300]}"
+            log(f"    rate limit from Gemini; waiting {delay:.0f}s (attempt {attempt + 1} of 8)")
+        elif res.status_code in (500, 503) or res.status_code == 400 and "audio" in res.text.lower():
+            last = f"{res.status_code} {res.text[:300]}"
         else:
-            raise StageError(f"Gemini voice returned {res.status_code}: {res.text[:400]}")
-        time.sleep(2 ** (attempt + 1))
-    raise StageError(f"Gemini voice failed after 5 tries for: \"{text[:60]}...\" ({last}). Re-run to retry just the missing sentences.")
+            raise StageError(f"Gemini voice returned {res.status_code}: {res.text[:600]}")
+        time.sleep(delay)
+    raise StageError(f"Gemini voice failed after 8 tries for: \"{text[:60]}...\" ({last}). Re-run to retry just the missing sentences.")
 
 
 def _synthesize(text: str) -> bytes:

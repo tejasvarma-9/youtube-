@@ -100,6 +100,27 @@ class GeminiVoiceTests(unittest.TestCase):
                 mock.patch("pipeline.s3_voiceover.time.sleep"):
             self.assertEqual(s3_voiceover._gemini("Hi."), pcm)
 
+    def test_rate_limit_waits_as_long_as_google_asks_then_succeeds(self):
+        limited = {"error": {"code": 429, "message": "You exceeded your current quota",
+                             "details": [{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "23s"}]}}
+        pcm = b"\x03\x00" * 10
+        ok = {"candidates": [{"content": {"parts": [{"inlineData": {"data": base64.b64encode(pcm).decode()}}]}}]}
+        with mock.patch("pipeline.s3_voiceover.requests.post",
+                        side_effect=[self._resp(429, limited), self._resp(200, ok)]), \
+                mock.patch("pipeline.s3_voiceover.time.sleep") as sleep:
+            self.assertEqual(s3_voiceover._gemini("Hi."), pcm)
+        self.assertGreaterEqual(sleep.call_args_list[-1].args[0], 24)
+
+    def test_daily_quota_stops_at_once_with_google_details(self):
+        daily = {"error": {"code": 429, "message": "Quota exceeded for metric ...requests_per_day_per_project, limit: 0"}}
+        with mock.patch("pipeline.s3_voiceover.requests.post", return_value=self._resp(429, daily)) as post, \
+                mock.patch("pipeline.s3_voiceover.time.sleep"):
+            with self.assertRaises(cli.StageError) as cm:
+                s3_voiceover._gemini("Hi.")
+        self.assertEqual(post.call_count, 1)
+        self.assertIn("limit: 0", str(cm.exception))
+        self.assertIn("billing", str(cm.exception))
+
     def test_hard_error_stops(self):
         with mock.patch("pipeline.s3_voiceover.requests.post", return_value=self._resp(403, {"error": "denied"})):
             with self.assertRaises(cli.StageError):

@@ -147,6 +147,7 @@ The image count is the cost lever. `MIN_SHOT_SECONDS=10` in `.env` keeps each im
 | `GEMINI_TTS_VOICE` | `Charon` | Other voices to try: Orus, Iapetus, Fenrir, Puck |
 | `GEMINI_TTS_STYLE` | calm, confident, slightly wry narrator | The delivery instruction sent with every sentence |
 | `TTS_PROVIDER` | `gemini` | `chirp` for Google Cloud Chirp 3 HD (needs Cloud billing) |
+| `GEMINI_TTS_MIN_INTERVAL_S` | `0` | Seconds to wait between voice requests. Set to `7` if the voice step keeps hitting rate limits |
 | `MIN_SHOT_SECONDS` | `10` | Lower means more images and more cost |
 | `CLAUDE_MODEL` | Claude Code's default | |
 
