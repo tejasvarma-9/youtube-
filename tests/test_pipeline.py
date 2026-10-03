@@ -158,6 +158,36 @@ class StubEndToEnd(unittest.TestCase):
         self.assertFalse((d / "approval.json").exists())
         self.assertTrue(json.loads((d / "factcheck.json").read_text())["passed"])
 
+    def test_revise_after_failed_factcheck(self):
+        from pipeline import llm, s2_factcheck
+        self.assertEqual(cli.main(["--stub", "new", "How vending machines make money", "--slug", self.slug]), 0)
+        self.assertEqual(cli.main(["--stub", "script", self.slug]), 0)
+        self.assertEqual(cli.main(["--stub", "factcheck", self.slug]), 0)
+        d = config.OUT / self.slug
+        fc = json.loads((d / "factcheck.json").read_text())
+        fc["facts"][1].update(verdict="WRONG", note="the source says $4,000", fix="Say $4,000.")
+        fc["facts"].append({"id": "NEW1", "verdict": "UNSUPPORTED", "claim": "earns more than the gift shop",
+                            "note": "no source", "fix": "Cut it."})
+        fc["policy"] = [{"quote": "nobody warned Bob", "problem": "test", "fix": "drop it"}]
+        fc["passed"] = False
+        (d / "factcheck.json").write_text(json.dumps(fc))
+        (d / "factcheck.md").write_text("old report")
+
+        real = llm.ask
+        with mock.patch.object(s2_factcheck.llm, "ask", side_effect=real) as ask:
+            self.assertEqual(cli.main(["--stub", "revise", self.slug]), 0)
+        sent = ask.call_args_list[0].args[0]
+        for needle in ("F2 WRONG", "the source says $4,000", "NEW1 UNSUPPORTED", "earns more than the gift shop",
+                       "POLICY", "nobody warned Bob"):
+            self.assertIn(needle, sent)
+        self.assertEqual((d / "raw" / "v1" / "factcheck.md").read_text(), "old report")
+        self.assertTrue((d / "raw" / "v1" / "script.txt").exists())
+        self.assertIn("Revision 1", (d / "changes.md").read_text())
+        self.assertTrue(json.loads((d / "factcheck.json").read_text())["passed"])
+        # Once it passes there is nothing left to revise.
+        self.assertEqual(cli.main(["--stub", "revise", self.slug]), 0)
+        self.assertFalse((d / "raw" / "v2").exists())
+
     def test_run_without_caption_burn_in(self):
         real = s6_assemble.find_ffmpeg()[0]
         with mock.patch.object(s6_assemble, "find_ffmpeg", return_value=(real, False)):

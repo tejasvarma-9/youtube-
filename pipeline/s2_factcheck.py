@@ -7,7 +7,7 @@ Writes factcheck.json, factcheck.md (the readable report) and sources.md.
 from __future__ import annotations
 
 from . import llm, s1_script
-from .common import StageError, Video, extract_json, fill, log, prompt
+from .common import StageError, Video, extract_json, fill, log, parse_sections, prompt, voice_profile
 
 BAD = {"UNSUPPORTED", "WRONG"}
 
@@ -41,9 +41,68 @@ def run(video: Video, stub: bool = False) -> None:
         f"({len(failures)} bad facts, {len(unchecked)} unchecked, {len(policy)} policy, {len(lint['errors'])} rule errors)")
     if not passed:
         raise StageError(
-            f"Fact-check failed. Read out/{video.slug}/factcheck.md, fix script.txt and facts.txt, "
-            f"then run: python -m pipeline factcheck {video.slug}"
+            f"Fact-check failed. Read out/{video.slug}/factcheck.md, then either let Claude fix it:\n"
+            f"  python -m pipeline revise {video.slug}\n"
+            f"or fix script.txt and facts.txt yourself and run: python -m pipeline factcheck {video.slug}"
         )
+
+
+def problems_text(video: Video) -> str:
+    """The failed fact-check as a plain list the writer can work through."""
+    fc = video.read_json("factcheck.json")
+    lines = []
+    for f in fc.get("facts", []):
+        if f.get("verdict", "").upper() in BAD:
+            claim = f" Claim: \"{f['claim']}\"." if f.get("claim") else ""
+            fix = f" Suggested fix: {f['fix']}" if f.get("fix") else ""
+            src = f" Source checked: {f['source_url']}" if f.get("source_url") else ""
+            lines.append(f"- {f.get('id')} {f.get('verdict')}.{claim} Note: {f.get('note', '')}.{fix}{src}")
+    for p in fc.get("policy", []):
+        lines.append(f"- POLICY. Quote: \"{p.get('quote', '')}\". Problem: {p.get('problem', '')}. Suggested fix: {p.get('fix', '')}")
+    for fid in fc.get("unchecked", []):
+        lines.append(f"- {fid} was not checked. Make sure its claim is stated exactly as its source says.")
+    for e in fc.get("lint_errors", []):
+        lines.append(f"- RULE ERROR. {e}")
+    return "\n".join(lines)
+
+
+def revise(video: Video, stub: bool = False) -> None:
+    """Send the failed fact-check back to the writer, then fact-check the result again."""
+    try:
+        fc = video.read_json("factcheck.json")
+    except StageError:
+        raise StageError(f"Run the fact-check first: python -m pipeline factcheck {video.slug}")
+    if fc.get("passed"):
+        log("  fact-check already passed; nothing to revise.")
+        return
+    problems = problems_text(video)
+    b = video.brief()
+    files = ("script.txt", "facts.txt", "sources.txt")
+    old = {n: video.read_text(n) for n in files}
+    text = fill(prompt("revise.md"), VOICE=voice_profile(), TOPIC=b["topic"], ANGLE=b.get("angle") or "(none given)",
+                PROBLEMS=problems, SCRIPT=old["script.txt"], FACTS=old["facts.txt"], SOURCES=old["sources.txt"])
+    answer = llm.ask(text, "revise", web=True, stub=stub, context={**old, "problems": problems})
+
+    # Keep every earlier version so nothing the writer changed is lost.
+    n = 1
+    while video.path("raw", f"v{n}").exists():
+        n += 1
+    for name, body in old.items():
+        video.path("raw", f"v{n}", name).write_text(body)
+    video.path("raw", f"v{n}", "factcheck.md").write_text(video.read_text("factcheck.md"))
+    video.path("raw", f"revise{n}_answer.md").write_text(answer)
+
+    parts = parse_sections(answer, ["SCRIPT", "FACTS", "SOURCES", "CHANGES"])
+    if not parts["SCRIPT"]:
+        raise StageError(f"The revised script came back empty. See raw/revise{n}_answer.md.")
+    for name, key in zip(files, ("SCRIPT", "FACTS", "SOURCES")):
+        video.path(name).write_text(parts[key].strip() + "\n")
+    video.path("changes.md").write_text(f"# Revision {n}\n\n" + parts["CHANGES"].strip() + "\n")
+    log(f"  revised: the previous version is in raw/v{n}/, the change list in changes.md")
+    for line in parts["CHANGES"].splitlines():
+        if line.strip():
+            log(f"    {line.strip()}")
+    run(video, stub=stub)
 
 
 def require_pass(video: Video, force: bool) -> None:
@@ -66,7 +125,7 @@ def _write_report(video: Video, result: dict, fact_lines: dict) -> None:
         lines.append("")
     lines += ["## Facts", "", "| ID | Verdict | Claim | Note | Fix |", "|---|---|---|---|---|"]
     for f in result.get("facts", []):
-        claim = fact_lines.get(f.get("id"), {}).get("claim", "(found in script)")
+        claim = fact_lines.get(f.get("id"), {}).get("claim") or f.get("claim") or "(found in script)"
         cells = [f.get("id", ""), f.get("verdict", ""), claim, f.get("note", ""), f.get("fix", "")]
         lines.append("| " + " | ".join(str(c).replace("|", "/").replace("\n", " ") for c in cells) + " |")
     if result["unchecked"]:

@@ -27,6 +27,6 @@ Also flag policy problems: market predictions, buy/sell/hold advice, promised in
 
 Output only this JSON between the marker lines:
 ===JSON===
-{"facts": [{"id": "F1", "verdict": "SUPPORTED", "note": "short reason", "fix": "suggested rewrite of the sentence, or empty", "source_url": "url you checked, or empty"}],
+{"facts": [{"id": "F1", "verdict": "SUPPORTED", "claim": "only for NEW facts: the exact words from the script, else empty", "note": "short reason", "fix": "suggested rewrite of the sentence, or empty", "source_url": "url you checked, or empty"}],
  "policy": [{"quote": "exact words from the script", "problem": "short reason", "fix": "rewrite"}]}
 ===END===

@@ -72,20 +72,21 @@ Play the five samples. Put the winner in `.env` as `GEMINI_TTS_VOICE=Orus` (or w
 ## 5. Make a video
 
 ```bash
-python -m pipeline new "How Costco makes money" --angle "Costco's profit is mostly membership fees, so the store itself runs near break-even"
+python -m pipeline new "How Costco makes money" --angle "About half of Costco's operating profit is membership fees, so shoppers pay for the low prices before they buy anything"
 python -m pipeline run how-costco-makes-money
 ```
 
-`--angle` is the one original insight that keeps the channel clear of YouTube's "inauthentic content" rule. Leave it out and the writer has to find one.
+`--angle` is the one original insight that keeps the channel clear of YouTube's "inauthentic content" rule. Leave it out and the writer has to find one. Only claim what the numbers show: an angle that overstates them makes the writer overstate too, and the fact-check will fail it.
 
-If the run stops at the fact-check:
+If the run stops at the fact-check, let Claude fix what it flagged. This rewrites only the flagged sentences, then fact-checks again:
 
 ```bash
-open out/how-costco-makes-money/factcheck.md
-# fix script.txt and facts.txt in that folder, then:
-python -m pipeline factcheck how-costco-makes-money
+python -m pipeline revise how-costco-makes-money
+open out/how-costco-makes-money/changes.md
 python -m pipeline run how-costco-makes-money
 ```
+
+`changes.md` lists every change. The previous version is kept in `raw/v1/`. If it still fails, run `revise` once more, or fix `script.txt` and `facts.txt` yourself and run `python -m pipeline factcheck how-costco-makes-money`.
 
 To change one image, edit its `scene` in `shots.json`, delete `images/shot_NNN.png`, then:
 
