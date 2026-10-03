@@ -6,7 +6,7 @@ import shutil
 import unittest
 from unittest import mock
 
-from pipeline import cli, config, s3_voiceover
+from pipeline import cli, config, s3_voiceover, s6_assemble
 from pipeline.common import extract_json, parse_sections, sentences_with_paragraphs, split_sentences
 from pipeline.lint import lint_script, lint_title, validate_chapters
 from pipeline.s4_shots import group
@@ -109,6 +109,32 @@ class GeminiVoiceTests(unittest.TestCase):
         self.assertAlmostEqual(config.voice_cost("gemini", 840, 14000), 0.126, places=3)
 
 
+class FfmpegDetectionTests(unittest.TestCase):
+    PLAIN = " ... zoompan  V->V\n"
+    FULL = " ... zoompan  V->V\n ... subtitles  V->V\n"
+
+    def _find(self, filters_by_path):
+        s6_assemble.find_ffmpeg.cache_clear()
+        try:
+            with mock.patch.object(s6_assemble.shutil, "which", return_value="/usr/bin/ffmpeg"), \
+                    mock.patch.object(s6_assemble.os.path, "exists", side_effect=lambda p: p in filters_by_path), \
+                    mock.patch.object(s6_assemble, "_filters", side_effect=lambda p: filters_by_path[p]), \
+                    mock.patch.dict(s6_assemble.os.environ, {}, clear=False):
+                return s6_assemble.find_ffmpeg()
+        finally:
+            s6_assemble.find_ffmpeg.cache_clear()
+
+    def test_prefers_ffmpeg_full_when_regular_cannot_burn(self):
+        full = s6_assemble.FFMPEG_FULL[0]
+        self.assertEqual(self._find({"/usr/bin/ffmpeg": self.PLAIN, full: self.FULL}), (full, True))
+
+    def test_falls_back_to_regular_without_captions(self):
+        self.assertEqual(self._find({"/usr/bin/ffmpeg": self.PLAIN}), ("/usr/bin/ffmpeg", False))
+
+    def test_none_usable(self):
+        self.assertEqual(self._find({"/usr/bin/ffmpeg": ""}), ("", False))
+
+
 class StubEndToEnd(unittest.TestCase):
     """The whole pipeline on placeholders: no keys, no Claude, about a minute."""
 
@@ -131,6 +157,16 @@ class StubEndToEnd(unittest.TestCase):
         self.assertEqual(cli.main(["approve", self.slug]), 1)
         self.assertFalse((d / "approval.json").exists())
         self.assertTrue(json.loads((d / "factcheck.json").read_text())["passed"])
+
+    def test_run_without_caption_burn_in(self):
+        real = s6_assemble.find_ffmpeg()[0]
+        with mock.patch.object(s6_assemble, "find_ffmpeg", return_value=(real, False)):
+            code = cli.main(["--stub", "new", "How vending machines make money", "--slug", self.slug, "--run"])
+        self.assertEqual(code, 0)
+        d = config.OUT / self.slug
+        self.assertFalse(json.loads((d / "assembly.json").read_text())["burned_captions"])
+        self.assertTrue((d / "captions.srt").exists())
+        self.assertIn("no burned-in captions", (d / "review" / "REVIEW.md").read_text())
 
 
 if __name__ == "__main__":

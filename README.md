@@ -21,6 +21,13 @@ ffmpeg and Claude Code are already on your Mac. Check that everything is ready:
 python -m pipeline doctor
 ```
 
+Homebrew's regular ffmpeg can't draw captions onto the video. The pipeline still works without that: you get `captions.srt` but no on-screen captions, and `doctor` shows a `!` note instead of an error. To burn captions in, install the full build (it is large, and the pipeline finds it automatically), then re-run the assembly:
+
+```bash
+brew install ffmpeg-full
+python -m pipeline run <video> --from assemble
+```
+
 ## 2. The Google key (do this once, never paste it in chat)
 
 One key covers images and the voiceover.

@@ -9,8 +9,11 @@ Writes clips/*.mp4, captions.srt and video.mp4.
 
 from __future__ import annotations
 
+import functools
 import hashlib
+import os
 import re
+import shutil
 
 from . import config
 from .common import StageError, Video, fmt_ts, log, run as sh
@@ -31,6 +34,35 @@ CAPTION_STYLE = (
 )
 
 
+FFMPEG_FULL = ["/opt/homebrew/opt/ffmpeg-full/bin/ffmpeg", "/usr/local/opt/ffmpeg-full/bin/ffmpeg"]
+
+
+def _filters(ffmpeg: str) -> str:
+    try:
+        return sh([ffmpeg, "-hide_banner", "-filters"]).stdout
+    except (StageError, OSError):
+        return ""
+
+
+@functools.lru_cache(maxsize=None)
+def find_ffmpeg() -> tuple[str, bool]:
+    """The ffmpeg to use and whether it can burn in captions (has the 'subtitles' filter).
+
+    Homebrew's regular ffmpeg no longer ships the caption renderer; ffmpeg-full does.
+    Prefers an ffmpeg that can burn captions, wherever it is. Returns ("", False) if none works.
+    """
+    candidates = [os.environ.get("FFMPEG_BIN", ""), shutil.which("ffmpeg") or "", *FFMPEG_FULL]
+    usable = []
+    for c in dict.fromkeys(c for c in candidates if c):
+        if os.path.exists(c):
+            f = _filters(c)
+            if re.search(r"\bzoompan\b", f):
+                if re.search(r"\bsubtitles\b", f):
+                    return c, True
+                usable.append(c)
+    return (usable[0], False) if usable else ("", False)
+
+
 def build_clip(img, out, frames: int, motion: int) -> None:
     z, x, y = (part.format(n=max(frames - 1, 1)) for part in MOTIONS[motion % len(MOTIONS)])
     vf = (
@@ -38,7 +70,7 @@ def build_clip(img, out, frames: int, motion: int) -> None:
         f"zoompan=z='{z}':x='{x}':y='{y}':d={frames}:s={config.WIDTH}x{config.HEIGHT}:fps={config.FPS},"
         "format=yuv420p"
     )
-    sh(["ffmpeg", "-y", "-v", "error", "-i", str(img), "-vf", vf, "-frames:v", str(frames),
+    sh([find_ffmpeg()[0], "-y", "-v", "error", "-i", str(img), "-vf", vf, "-frames:v", str(frames),
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-r", str(config.FPS), str(out)])
 
 
@@ -75,6 +107,13 @@ def write_srt(sentences: list[dict], path) -> None:
 
 
 def run(video: Video, stub: bool = False, captions: bool = True) -> None:
+    ffmpeg, can_burn = find_ffmpeg()
+    if not ffmpeg:
+        raise StageError("No usable ffmpeg found. On your Mac: brew install ffmpeg")
+    if captions and not can_burn:
+        log("  WARNING: your ffmpeg can't burn in captions, so video.mp4 will have none. captions.srt is still written.\n"
+            "           To burn them in: brew install ffmpeg-full (see README), then re-run with --from assemble.")
+        captions = False
     tl = video.read_json("timeline.json")
     shots = video.read_json("shots.json")["shots"]
     clips = []
@@ -99,7 +138,7 @@ def run(video: Video, stub: bool = False, captions: bool = True) -> None:
     srt = video.path("captions.srt")
     write_srt(tl["sentences"], srt)
 
-    cmd = ["ffmpeg", "-y", "-v", "error", "-f", "concat", "-safe", "0", "-i", "clips/list.txt", "-i", "voiceover.wav"]
+    cmd = [ffmpeg, "-y", "-v", "error", "-f", "concat", "-safe", "0", "-i", "clips/list.txt", "-i", "voiceover.wav"]
     if captions:
         cmd += ["-vf", f"subtitles=captions.srt:force_style='{CAPTION_STYLE}'"]
     cmd += ["-map", "0:v", "-map", "1:a", "-c:v", "libx264", "-preset", "medium", "-crf", "20",
@@ -107,16 +146,16 @@ def run(video: Video, stub: bool = False, captions: bool = True) -> None:
             "-movflags", "+faststart", "video.mp4"]
     log("  assembling video.mp4 ...")
     sh(cmd, cwd=video.dir)
+    video.write_json("assembly.json", {"ffmpeg": ffmpeg, "burned_captions": captions})
     log(f"  video.mp4 written ({tl['duration'] / 60:.1f} minutes)")
 
 
-def check_ffmpeg() -> list[str]:
-    problems = []
-    try:
-        filters = sh(["ffmpeg", "-hide_banner", "-filters"]).stdout
-    except (StageError, FileNotFoundError):
-        return ["ffmpeg isn't installed. On your Mac: brew install ffmpeg"]
-    for name in ("zoompan", "subtitles"):
-        if not re.search(rf"\b{name}\b", filters):
-            problems.append(f"Your ffmpeg has no '{name}' filter. Reinstall with: brew reinstall ffmpeg")
-    return problems
+def check_ffmpeg() -> tuple[list[str], list[str]]:
+    """(problems that block the pipeline, notes that don't)."""
+    ffmpeg, can_burn = find_ffmpeg()
+    if not ffmpeg:
+        return ["No usable ffmpeg found (it needs the 'zoompan' filter). On your Mac: brew install ffmpeg"], []
+    if not can_burn:
+        return [], ["Your ffmpeg can't burn captions into the video, so videos will have no on-screen captions "
+                    "(captions.srt is still made). Optional fix: brew install ffmpeg-full"]
+    return [], []

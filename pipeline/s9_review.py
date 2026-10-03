@@ -50,7 +50,11 @@ def run(video: Video, stub: bool = False) -> None:
     verdicts = {}
     for f in fc.get("facts", []):
         verdicts[f.get("verdict", "?")] = verdicts.get(f.get("verdict", "?"), 0) + 1
+    asm = video.dir / "assembly.json"
+    burned = json.loads(asm.read_text()).get("burned_captions", True) if asm.exists() else True
     warnings = lint["warnings"] + meta.get("title_problems", []) + meta.get("chapter_problems", [])
+    if not burned:
+        warnings.append("video.mp4 has no burned-in captions (your ffmpeg can't). captions.srt is included.")
 
     lines = [
         f"# Review: {meta['title']}",

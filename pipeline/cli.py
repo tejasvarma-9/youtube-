@@ -97,7 +97,7 @@ def cmd_status() -> None:
 
 
 def cmd_doctor() -> int:
-    problems = s6_assemble.check_ffmpeg()
+    problems, notes = s6_assemble.check_ffmpeg()
     if not shutil.which(config.CLAUDE_BIN):
         problems.append("Claude Code ('claude') isn't on your PATH; the script, fact-check, shots and metadata steps need it.")
     if not config.GOOGLE_API_KEY:
@@ -110,6 +110,8 @@ def cmd_doctor() -> int:
         problems.append("assets/style-refs/ has no approved style frames yet (README: 'Pick the style frames').")
     for p in problems:
         print(f"  ✗ {p}")
+    for n in notes:
+        print(f"  ! {n}")
     if not problems:
         print("  ✓ Everything is set up.")
     return 1 if problems else 0
