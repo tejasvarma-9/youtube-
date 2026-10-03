@@ -132,4 +132,4 @@ python -m unittest discover tests
 
 ## Credits
 
-The title, thumbnail-text and chapter checks follow the approach of youtube-agent-skill by Jake Schincariol (MIT). No code was copied from it, so its license does not apply here. Its `/yt-*` skills can still be installed on the Mac separately, for research and post-publish analysis.
+The title, thumbnail-text and chapter checks follow the approach of [youtube-agent-skill](https://github.com/Jakeschincariol/youtube-agent-skill) by Jake Schincariol (MIT). No code was copied from it, so its license does not apply here. Its `/yt-*` skills can still be installed on the Mac separately, for research and post-publish analysis.
