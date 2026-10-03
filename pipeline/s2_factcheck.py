@@ -98,17 +98,19 @@ def problems_text(video: Video) -> str:
     return "\n".join(lines)
 
 
-def revise(video: Video, stub: bool = False) -> None:
-    """Send the failed fact-check back to the writer, then fact-check the result again."""
+def revise(video: Video, stub: bool = False, notes: str = "") -> None:
+    """Send the failed fact-check (and any editor notes) back to the writer, then fact-check the result again."""
     try:
         fc = video.read_json("factcheck.json")
     except StageError:
         raise StageError(f"Run the fact-check first: python -m pipeline factcheck {video.slug}")
-    if fc.get("passed"):
-        log("  fact-check already passed; nothing to revise.")
+    if fc.get("passed") and not notes:
+        log("  fact-check already passed; nothing to revise. To make edits, pass --notes <file>.")
         return
     migrate(video)
     problems = problems_text(video)
+    if notes:
+        problems = (problems + "\n\n" if problems else "") + "EDITOR NOTES FROM TEJAS:\n" + notes.strip()
     b = video.brief()
     files = ("script.txt", "facts.txt", "sources.txt")
     old = {n: video.read_text(n) for n in files}

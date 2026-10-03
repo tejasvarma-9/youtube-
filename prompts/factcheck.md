@@ -5,6 +5,8 @@ For every fact line below:
 2. If it is marked ESTIMATE, check that the script says it aloud as an estimate ("roughly", "about", "estimates suggest") and that it is plausible. Search the web if you need to.
 3. Also read the script (within the SCOPE below) for factual claims that are missing from the fact list, especially claims about named companies or people. Report each one as a new fact with id "NEW<n>".
 
+4. Redo every calculation in the script yourself. Flag (as a NEW fact, UNSUPPORTED or WRONG) any calculation that is wrong, counts the same money twice, or mixes up definitions (for example treating a figure that is already net of a cost as if it weren't).
+
 Verdicts:
 - SUPPORTED: the source says this.
 - ESTIMATE_OK: an estimate, plausible, and spoken as an estimate in the script.

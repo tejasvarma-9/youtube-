@@ -139,7 +139,9 @@ def main(argv=None) -> int:
         sp = sub.add_parser(s, help=f"run only the {s} stage")
         sp.add_argument("slug")
     sub.add_parser("check", help="re-check script.txt after a hand edit").add_argument("slug")
-    sub.add_parser("revise", help="have Claude fix what the fact-check flagged, then fact-check again").add_argument("slug")
+    rv = sub.add_parser("revise", help="have Claude fix what the fact-check flagged, then fact-check again")
+    rv.add_argument("slug")
+    rv.add_argument("--notes", help="a text file of editing notes for the writer to apply as well")
     ap = sub.add_parser("approve", help="record Tejas's approval of the exact files in the review package")
     ap.add_argument("slug")
     ap.add_argument("--publish-at", default="", help='planned publish time, e.g. "2026-10-10T15:00:00Z"')
@@ -168,7 +170,8 @@ def main(argv=None) -> int:
         elif a.cmd in STAGES:
             run_stage(a.cmd, Video(a.slug), a)
         elif a.cmd == "revise":
-            s2_factcheck.revise(Video(a.slug), stub=a.stub)
+            notes = open(a.notes).read() if a.notes else ""
+            s2_factcheck.revise(Video(a.slug), stub=a.stub, notes=notes)
         elif a.cmd == "check":
             s1_script.check(Video(a.slug))
         elif a.cmd == "approve":

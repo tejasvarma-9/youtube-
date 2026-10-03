@@ -184,9 +184,15 @@ class StubEndToEnd(unittest.TestCase):
         self.assertTrue((d / "raw" / "v1" / "script.txt").exists())
         self.assertIn("Revision 1", (d / "changes.md").read_text())
         self.assertTrue(json.loads((d / "factcheck.json").read_text())["passed"])
-        # Once it passes there is nothing left to revise.
+        # Once it passes there is nothing left to revise, unless Tejas sends editor notes.
         self.assertEqual(cli.main(["--stub", "revise", self.slug]), 0)
         self.assertFalse((d / "raw" / "v2").exists())
+        notes = d / "notes.md"
+        notes.write_text("Say membership card, not card.")
+        with mock.patch.object(s2_factcheck.llm, "ask", side_effect=real) as ask:
+            self.assertEqual(cli.main(["--stub", "revise", self.slug, "--notes", str(notes)]), 0)
+        self.assertIn("EDITOR NOTES FROM TEJAS:\nSay membership card, not card.", ask.call_args_list[0].args[0])
+        self.assertTrue((d / "raw" / "v2" / "script.txt").exists())
 
     def test_factcheck_rechecks_only_what_changed(self):
         from pipeline import llm, s2_factcheck
