@@ -144,6 +144,8 @@ def main(argv=None) -> int:
     ap.add_argument("--publish-at", default="", help='planned publish time, e.g. "2026-10-10T15:00:00Z"')
     sub.add_parser("status", help="list videos and which stages are done")
     sub.add_parser("doctor", help="check that this Mac is set up")
+    vt = sub.add_parser("voice-test", help="a short sample in several voices to choose from (about 1 cent)")
+    vt.add_argument("--voices", help="comma-separated Gemini voice names, e.g. Charon,Orus")
     sub.add_parser("style-frames", help="generate 4 style frame candidates to pick from (about $0.14)")
 
     for sp in list(sub.choices.values()):
@@ -171,6 +173,11 @@ def main(argv=None) -> int:
             cmd_status()
         elif a.cmd == "doctor":
             return cmd_doctor()
+        elif a.cmd == "voice-test":
+            voices = [v.strip() for v in a.voices.split(",")] if a.voices else None
+            s3_voiceover.voice_test(voices, stub=a.stub)
+            log(f"Listen with: open {config.OUT / 'voice-samples'}")
+            log("Pick one, then put GEMINI_TTS_VOICE=<name> in .env.")
         elif a.cmd == "style-frames":
             made = s5_images.make_style_candidates()
             log(f"Wrote {len(made)} candidates to assets/style-refs/candidates/. Move the 2 or 3 you like into assets/style-refs/.")

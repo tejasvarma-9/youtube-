@@ -72,13 +72,13 @@ def run(video: Video, stub: bool = False, force: bool = False) -> None:
     log(f"  voiceover: {total / 60:.1f} minutes ({new_chars:,} characters newly synthesized)")
 
 
-def _gemini(text: str) -> bytes:
+def _gemini(text: str, voice: str | None = None) -> bytes:
     """One sentence through the Gemini API's voice model; returns raw 24 kHz 16-bit mono PCM."""
     body = {
         "contents": [{"parts": [{"text": f"{config.GEMINI_TTS_STYLE}: {text}"}]}],
         "generationConfig": {
             "responseModalities": ["AUDIO"],
-            "speechConfig": {"voiceConfig": {"prebuiltVoiceConfig": {"voiceName": config.GEMINI_TTS_VOICE}}},
+            "speechConfig": {"voiceConfig": {"prebuiltVoiceConfig": {"voiceName": voice or config.GEMINI_TTS_VOICE}}},
         },
     }
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{config.GEMINI_TTS_MODEL}:generateContent"
@@ -150,3 +150,28 @@ def _write_wav(path, pcm: bytes) -> None:
         w.setsampwidth(2)
         w.setframerate(RATE)
         w.writeframes(pcm)
+
+
+SAMPLE_TEXT = (
+    "A vending machine in a busy hospital hallway can quietly earn more per square foot than the gift shop "
+    "next to it. A used machine runs roughly $1,500 to $3,000, and the building usually takes 10% to 20% of "
+    "sales. So, who pays whom?"
+)
+SAMPLE_VOICES = ["Charon", "Orus", "Iapetus", "Algieba", "Kore"]
+
+
+def voice_test(voices: list[str] | None = None, stub: bool = False) -> list:
+    """Short samples in several voices (about a cent in total) so Tejas can pick one by ear."""
+    if config.TTS_PROVIDER != "gemini":
+        raise StageError("voice-test only covers the Gemini voices. Set TTS_PROVIDER=gemini (the default).")
+    if not stub and not config.GOOGLE_API_KEY:
+        raise StageError("GOOGLE_API_KEY is empty. Put it in the .env file (see README).")
+    out = config.OUT / "voice-samples"
+    out.mkdir(parents=True, exist_ok=True)
+    made = []
+    for v in voices or SAMPLE_VOICES:
+        path = out / f"{v}.wav"
+        _write_wav(path, _stub_pcm(SAMPLE_TEXT) if stub else _gemini(SAMPLE_TEXT, voice=v))
+        log(f"  {v}: {path.relative_to(config.ROOT)}")
+        made.append(path)
+    return made

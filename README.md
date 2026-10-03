@@ -60,6 +60,15 @@ open assets/style-refs/candidates
 
 Move the 2 or 3 frames you like into `assets/style-refs/` and commit them. Every image request sends them along, so all images share one look. This costs about $0.14.
 
+## 4b. Choose the narrator voice (once)
+
+```bash
+python -m pipeline voice-test
+open out/voice-samples
+```
+
+Play the five samples. Put the winner in `.env` as `GEMINI_TTS_VOICE=Orus` (or whichever you chose). This costs about a cent. Listen for numbers read correctly: "$1,500 to $3,000" and "10% to 20%".
+
 ## 5. Make a video
 
 ```bash
