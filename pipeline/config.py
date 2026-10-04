@@ -85,6 +85,8 @@ WIDTH, HEIGHT, FPS = 1920, 1080, 30
 # Real-ESRGAN upscaler is installed (README: "Sharper images"), each picture is upscaled 2x first.
 UPSCALER_BIN = env("UPSCALER_BIN") or str(ROOT / "tools" / "realesrgan" / "realesrgan-ncnn-vulkan")
 UPSCALE_MODEL = env("UPSCALE_MODEL", "realesr-animevideov3")
+# Caption timing: a local speech recognizer (faster-whisper) finds when each word is said.
+ALIGN_MODEL = env("ALIGN_MODEL", "base.en")
 TARGET_WORDS = 2200
 WORDS_MIN, WORDS_MAX = 1800, 2500
 

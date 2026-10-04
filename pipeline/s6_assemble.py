@@ -175,6 +175,20 @@ def write_srt(sentences: list[dict], path) -> None:
     n, lines = 0, []
     for s in sentences:
         chunks = caption_chunks(s["text"])
+        words = s.get("words")
+        if words and len(words) == len(s["text"].split()):
+            # Each caption line starts when its first word is said and stays up until the next line.
+            k = 0
+            starts = []
+            for c in chunks:
+                starts.append(max(words[k][0], s["start"]))
+                k += len(c.split())
+            for i, c in enumerate(chunks):
+                a = starts[i]
+                b = starts[i + 1] if i + 1 < len(chunks) else s["end"]
+                n += 1
+                lines += [str(n), f"{fmt_ts(a, srt=True)} --> {fmt_ts(max(b, a + 0.05), srt=True)}", c, ""]
+            continue
         total = sum(len(c) for c in chunks) or 1
         t = s["start"]
         span = s["end"] - s["start"]
@@ -196,6 +210,13 @@ def run(video: Video, stub: bool = False, captions: bool = True) -> None:
         captions = False
     tl = video.read_json("timeline.json")
     shots = video.read_json("shots.json")["shots"]
+    # Shot times follow the timeline's sentence times, so re-timed sentences move the pictures too.
+    starts = {s["i"]: s["start"] for s in tl["sentences"]}
+    if all(shot.get("sentences") and shot["sentences"][0] in starts for shot in shots):
+        for n, shot in enumerate(shots):
+            shot["start"] = 0.0 if n == 0 else starts[shot["sentences"][0]]
+        for shot, nxt in zip(shots, shots[1:] + [{"start": tl["duration"]}]):
+            shot["end"] = nxt["start"]
     clips, todo = [], []
     sharp = f"up:{config.UPSCALE_MODEL}" if find_upscaler() else "plain"
     for idx, s in enumerate(shots):

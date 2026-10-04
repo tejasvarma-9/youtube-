@@ -43,6 +43,17 @@ python -m pipeline doctor
 
 `doctor` stops showing the upscaler note once it's found. The assembly then upscales each new picture (cached in `images/upscaled/`, a few minutes per video). If the upscaler ever fails, the video is still made from the original pictures and the log says so.
 
+### Captions in sync with the voice
+
+The voice model returns audio without timestamps, so caption timing used to be estimated and could drift in places. `pip install -r requirements.txt` now also installs faster-whisper, a small speech recognizer that runs on your Mac for free. After each voiceover it listens to the audio and times every caption line to the moment its words are spoken. The first run downloads its model (about 150 MB). If it isn't installed or doesn't match the script well, the old timing is used and the log says so.
+
+To fix the timing of a video that's already made, without making new audio or pictures:
+
+```bash
+python -m pipeline align <video>
+python -m pipeline run <video> --from assemble
+```
+
 ## 2. The Google key (do this once, never paste it in chat)
 
 One key covers images and the voiceover.

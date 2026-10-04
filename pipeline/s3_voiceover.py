@@ -20,7 +20,7 @@ import wave
 
 import requests
 
-from . import config, s2_factcheck
+from . import align, config, s2_factcheck
 from .common import StageError, Video, log, sentences_with_paragraphs
 
 RATE = 24000
@@ -84,8 +84,10 @@ def run(video: Video, stub: bool = False, force: bool = False) -> None:
     _write_wav(video.path("voiceover.wav"), bytes(pcm_all))
 
     total = len(pcm_all) / 2 / RATE
-    video.write_json("timeline.json", {"voice": voice, "provider": "stub" if stub else provider, "duration": round(total, 3), "characters": chars,
-                                       "new_characters": new_chars, "requests": requests_made, "sentences": rows})
+    tl = {"voice": voice, "provider": "stub" if stub else provider, "duration": round(total, 3), "characters": chars,
+          "new_characters": new_chars, "requests": requests_made, "sentences": rows}
+    tl["timing"] = "pauses" if stub else align.align(video, tl)
+    video.write_json("timeline.json", tl)
     log(f"  voiceover: {total / 60:.1f} minutes ({requests_made} requests, {new_chars:,} characters newly synthesized)")
 
 

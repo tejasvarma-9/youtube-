@@ -7,7 +7,7 @@ import json
 import shutil
 import sys
 
-from . import (config, s1_script, s2_factcheck, s3_voiceover, s4_shots, s5_images, s6_assemble, s7_metadata,
+from . import (align, config, s1_script, s2_factcheck, s3_voiceover, s4_shots, s5_images, s6_assemble, s7_metadata,
                s8_thumbnail, s9_review)
 from .common import StageError, Video, log, slugify
 
@@ -96,6 +96,18 @@ def cmd_status() -> None:
         print(f"{d.name:40s} {marks} {approved}")
 
 
+def cmd_align(v: Video) -> None:
+    if not align.available():
+        raise StageError("Word timing needs faster-whisper: pip install -r requirements.txt")
+    tl = v.read_json("timeline.json")
+    how = align.align(v, tl)
+    if how == "pauses":
+        raise StageError("Word timing didn't work (see the warning above); timeline.json is unchanged.")
+    tl["timing"] = how
+    v.write_json("timeline.json", tl)
+    log(f"  captions re-timed from the voiceover. Rebuild the video: python -m pipeline run {v.slug} --from assemble")
+
+
 def cmd_doctor() -> int:
     problems, notes = s6_assemble.check_ffmpeg()
     if not shutil.which(config.CLAUDE_BIN):
@@ -106,6 +118,8 @@ def cmd_doctor() -> int:
         import PIL  # noqa: F401
     except ImportError:
         problems.append("Pillow isn't installed: pip install -r requirements.txt")
+    if not align.available():
+        notes.append("faster-whisper isn't installed, so captions can drift from the voice in places: pip install -r requirements.txt")
     if not s6_assemble.find_upscaler():
         notes.append("Image upscaler not installed, so videos look a little soft on big screens (README: 'Sharper images').")
     if not s5_images.style_refs():
@@ -141,6 +155,7 @@ def main(argv=None) -> int:
         sp = sub.add_parser(s, help=f"run only the {s} stage")
         sp.add_argument("slug")
     sub.add_parser("check", help="re-check script.txt after a hand edit").add_argument("slug")
+    sub.add_parser("align", help="re-time the captions from the finished voiceover (then run --from assemble)").add_argument("slug")
     rv = sub.add_parser("revise", help="have Claude fix what the fact-check flagged, then fact-check again")
     rv.add_argument("slug")
     rv.add_argument("--notes", help="a text file of editing notes for the writer to apply as well")
@@ -174,6 +189,8 @@ def main(argv=None) -> int:
         elif a.cmd == "revise":
             notes = open(a.notes).read() if a.notes else ""
             s2_factcheck.revise(Video(a.slug), stub=a.stub, notes=notes)
+        elif a.cmd == "align":
+            cmd_align(Video(a.slug))
         elif a.cmd == "check":
             s1_script.check(Video(a.slug))
         elif a.cmd == "approve":

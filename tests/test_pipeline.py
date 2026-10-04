@@ -192,6 +192,49 @@ class VoiceChunkTests(unittest.TestCase):
         self.assertLess(len(s3_voiceover._chunk_rows(rows, 1500)), 12)
 
 
+class AlignTests(unittest.TestCase):
+    def setUp(self):
+        self.sents = [{"i": 1, "text": "Costco sold $297.2 billion.", "start": 0.0, "end": 2.0},
+                      {"i": 2, "text": "Fees were half of it.", "start": 2.0, "end": 4.0}]
+        # What a recognizer might hear: the number written differently, one word missed.
+        self.heard = [(" Costco", 0.1, 0.5), (" sold", 0.5, 0.8), (" $297.2", 0.9, 2.2), (" billion.", 2.2, 2.7),
+                      (" Fees", 3.1, 3.4), (" were", 3.4, 3.6), (" of", 3.9, 4.0), (" it.", 4.0, 4.3)]
+
+    def test_matches_words_and_fills_gaps(self):
+        from pipeline import align
+        wt = align.match(self.sents, self.heard, 5.0)
+        self.assertEqual([len(w) for w in wt], [4, 5])
+        self.assertEqual(wt[1][0], [3.1, 3.4])
+        half = wt[1][2]  # "half" was not heard; it sits between "were" and "of"
+        self.assertTrue(3.6 <= half[0] <= half[1] <= 3.9)
+        align.apply(self.sents, wt, 5.0)
+        self.assertEqual(self.sents[1]["start"], 3.1)
+        self.assertEqual(self.sents[0]["end"], 3.1)
+
+    def test_poor_match_is_rejected(self):
+        from pipeline import align
+        self.assertIsNone(align.match(self.sents, [(" something", 0, 1), (" else", 1, 2)], 5.0))
+
+    def test_captions_use_word_times(self):
+        import tempfile
+        from pathlib import Path
+        from pipeline import align
+        from pipeline.s6_assemble import write_srt
+        long = {"i": 1, "start": 0.0, "end": 9.0,
+                "text": "Membership fees bring in about five point nine billion dollars every single year for the company."}
+        n = len(long["text"].split())
+        heard = [(w, 0.5 * k, 0.5 * k + 0.4) for k, w in enumerate(long["text"].split())]
+        heard[8:] = [(w, a + 2.0, b + 2.0) for w, a, b in heard[8:]]  # a slow stretch mid-sentence
+        align.apply([long], align.match([long], heard, 12.0), 12.0)
+        self.assertEqual(len(long["words"]), n)
+        out = Path(tempfile.mkdtemp()) / "c.srt"
+        write_srt([long], out)
+        blocks = out.read_text().strip().split("\n\n")
+        second_start = blocks[1].splitlines()[1].split(" --> ")[0]
+        k = len(blocks[0].splitlines()[2].split())
+        self.assertEqual(second_start, s6_assemble.fmt_ts(long["words"][k][0], srt=True))
+
+
 class UpscaleTests(unittest.TestCase):
     """The upscaler is an outside program; a tiny fake stands in for it here."""
 
