@@ -202,8 +202,11 @@ If the quality check says the voice skipped or garbled a sentence, re-record jus
 
 ```bash
 python -m pipeline redo-voice how-costco-makes-money "a way to fail"
-python -m pipeline run how-costco-makes-money --from voice
+python -m pipeline voice how-costco-makes-money
+python -m pipeline run how-costco-makes-money --from assemble
 ```
+
+Don't use `--from voice` for this: it would also write a new shot list, and the pictures you already have would no longer match it.
 
 To change one image, edit its `scene` in `shots.json`, delete `images/shot_NNN.png`, then:
 

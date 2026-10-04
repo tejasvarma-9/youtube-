@@ -262,7 +262,7 @@ def main(argv=None) -> int:
             n = s3_voiceover.redo(Video(a.slug), a.phrase, stub=a.stub)
             if not n:
                 raise StageError(f'No recorded part of the voiceover contains "{a.phrase}". Check the spelling against script.txt.')
-            log(f"  forgot {n} recorded part(s). Now run: python -m pipeline run {a.slug} --from voice")
+            log(f"  forgot {n} recorded part(s). Now run: python -m pipeline voice {a.slug}  and then: python -m pipeline run {a.slug} --from assemble")
         elif a.cmd == "align":
             cmd_align(Video(a.slug))
         elif a.cmd == "check":
