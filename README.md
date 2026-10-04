@@ -24,7 +24,7 @@ python -m pipeline doctor
 
 The insight (`--angle`) is the one idea that makes the video yours. It must be something the numbers show. "Fees are about half of operating profit" is fine. "The card is the profit" is not, because it overstates. Claims in the angle, the title and the thumbnail text must all be safe to say out loud.
 
-**Step 3. Make the video (about 30 to 60 minutes, mostly waiting)**
+**Step 3. Make the video (mostly waiting)**
 
 ```bash
 python -m pipeline new "How <business> makes money" --angle "<your insight>"
