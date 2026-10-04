@@ -31,15 +31,28 @@ class TextTests(unittest.TestCase):
 
 class LintTests(unittest.TestCase):
     def test_flags_policy_format_and_unchecked_numbers(self):
-        script = "Welcome back! Costs run $2-5 million and margins are 12%. Subscribe for more."
+        script = "Welcome back! Costs run $2-5 million and margins are 12%. Hit the bell for more."
         errors = " ".join(lint_script(script, "F1 | margins are 12% | S1")["errors"])
-        for needle in ("welcome back", "Subscribe", "$2-5 million", "Unchecked figure: 2"):
+        for needle in ("welcome back", "hit the bell", "$2-5 million", "Unchecked figure: 2", "Intro:", "Outro:"):
             self.assertIn(needle.lower(), errors.lower())
         self.assertNotIn("Unchecked figure: 12", errors)
 
+    def test_intro_and_outro_rules(self):
+        hook = "A hallway machine can out-earn a gift shop."
+        intro = "This is Who Pays Who, where we follow the money. Today, who pays for the snacks."
+        outro = "If this was useful, like the video and subscribe to Who Pays Who."
+        good = "\n\n".join([hook, intro, "The middle part.", outro])
+        self.assertEqual(lint_script(good, "")["errors"], [])
+        no_intro = " ".join(["word"] * 160) + "\n\n" + outro
+        self.assertTrue(any(e.startswith("Intro:") for e in lint_script(no_intro, "")["errors"]))
+        no_outro = "\n\n".join([hook, intro, "The middle part."])
+        self.assertTrue(any(e.startswith("Outro:") for e in lint_script(no_outro, "")["errors"]))
+        middle = "\n\n".join([hook, intro, "Subscribe to Who Pays Who now.", "The end.", outro])
+        self.assertTrue(any("middle" in e for e in lint_script(middle, "")["errors"]))
+
     def test_years_are_not_figures(self):
         result = lint_script("In 2019 it cost $40,000.", "F1 | cost $40,000 | S1")
-        self.assertEqual(result["errors"], [])
+        self.assertEqual([e for e in result["errors"] if not e.startswith(("Intro:", "Outro:"))], [])
 
     def test_fact_line_needs_tag(self):
         errors = lint_script("It cost $40,000.", "F1 | cost $40,000 | trust me")["errors"]

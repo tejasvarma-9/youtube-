@@ -13,7 +13,7 @@ Verdicts:
 - UNSUPPORTED: no source, the source doesn't say it, or the URL fails.
 - WRONG: a source contradicts it. Give the correct figure and the URL.
 
-Also flag policy problems: market predictions, buy/sell/hold advice, promised income, mocking real people, politics, a subscribe call to action. "Promised income" means telling the viewer they will earn money. Worked example math about how a company or a made-up business earns money is the channel's format and is fine when the script says it is an example.
+Also flag policy problems: market predictions, buy/sell/hold advice, promised income, mocking real people, politics. The one-sentence like-and-subscribe ask at the very end, and the channel intro right after the hook, are required by the channel and are not policy problems; a subscribe ask anywhere else is. "Promised income" means telling the viewer they will earn money. Worked example math about how a company or a made-up business earns money is the channel's format and is fine when the script says it is an example.
 
 Missing claims are checkable statements of fact. A sentence the script clearly presents as the channel's own reading ("one way to read this", "it looks like") is not a missing claim. Don't report the same problem twice.
 

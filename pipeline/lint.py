@@ -8,10 +8,9 @@ from . import config
 from .common import word_count
 
 BANNED = [
-    (r"\bsubscribe\b", "no subscribe call to action"),
-    (r"\b(like and|hit the bell|smash that)\b", "no engagement bait"),
+    (r"\b(hit the bell|smash that)\b", "no engagement bait"),
     (r"\bsponsor(ed)? by\b|\btoday'?s sponsor\b", "no sponsor reads"),
-    (r"\b(welcome back|hey guys|hi everyone|in this video)\b", "no greeting or channel intro"),
+    (r"\b(welcome back|hey guys|hi everyone|in this video)\b", "no filler greeting"),
     (r"\byou will (earn|make)\b|\bguaranteed (income|returns?)\b", "never promise viewers income"),
     (r"\b(you should|go) (buy|sell|short)\b|\b(buy|sell|hold) (the|this) stock\b|\bgood investment\b", "no buy/sell/hold advice"),
     (r"\b(the market|stocks?) will (crash|rise|fall|soar)\b", "no market predictions"),
@@ -44,6 +43,27 @@ def _numbers(text: str) -> set[str]:
     return out
 
 
+def _intro_outro(script: str) -> list[str]:
+    """The channel intro goes right after the hook; one like-and-subscribe line closes the video."""
+    name = config.CHANNEL_NAME
+    out = []
+    paragraphs = [p for p in script.split("\n\n") if p.strip()]
+    first_words = " ".join(script.split()[:150])
+    if name.lower() not in first_words.lower():
+        out.append(f"Intro: say the channel name \"{name}\" and what today's video covers within the first 150 words, right after the hook.")
+    subs = [i for i, p in enumerate(paragraphs) if re.search(r"\bsubscribe\b", p, re.I)]
+    last = len(paragraphs) - 1
+    if not subs:
+        out.append(f"Outro: end with one sentence asking viewers to like the video and subscribe to {name}.")
+    elif subs != [last]:
+        out.append("Outro: the like-and-subscribe line belongs only in the final paragraph, not in the middle of the video.")
+    elif name.lower() not in paragraphs[last].lower() or not re.search(r"\blike\b", paragraphs[last], re.I):
+        out.append(f"Outro: the final line must ask viewers to like the video and subscribe to {name}.")
+    elif len(re.findall(r"\bsubscribe\b", script, re.I)) > 1:
+        out.append("Outro: ask for the subscribe once, not twice.")
+    return out
+
+
 def lint_script(script: str, facts: str) -> dict:
     errors, warnings = [], []
     words = word_count(script)
@@ -57,6 +77,8 @@ def lint_script(script: str, facts: str) -> dict:
             errors.append(f"Format: the script contains {what}; it must be clean prose.")
     for m in GARBLED_RANGE.finditer(script):
         errors.append(f"Number format: \"{m.group(0)}\" will be read badly; write it out in full, like \"$2 million to $5 million\".")
+
+    errors += _intro_outro(script)
 
     fact_numbers = _numbers(facts)
     missing = sorted(_numbers(script) - fact_numbers, key=lambda s: float(s) if s.replace(".", "").isdigit() else 0)

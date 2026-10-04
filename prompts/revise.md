@@ -33,7 +33,7 @@ How to fix each problem, in this order of preference:
 
 If a fix weakens the ORIGINAL ANGLE, the angle changes, not the facts. State the angle as strongly as the evidence allows and no stronger.
 
-Keep every sentence that has no problem word for word, so its recorded audio can be reused. Don't add new figures or claims unless an editor note asks for them. Keep the length within about 50 words of the original unless an editor note asks for cuts.
+Keep the channel intro right after the hook and the final like-and-subscribe sentence in place unless a problem is about them. Keep every sentence that has no problem word for word, so its recorded audio can be reused. Don't add new figures or claims unless an editor note asks for them. Keep the length within about 50 words of the original unless an editor note asks for cuts.
 
 Update the fact list to match: correct fixed lines, remove lines whose claim you cut, and add a line for every NEW claim you kept (number them after the last F<n>). Every number and factual claim in the script must have a fact line.
 

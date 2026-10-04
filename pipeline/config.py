@@ -7,6 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "out"
+CHANNEL_NAME = "Who Pays Who"
 PROMPTS = ROOT / "prompts"
 ASSETS = ROOT / "assets"
 STYLE_REFS = ASSETS / "style-refs"

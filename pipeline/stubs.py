@@ -10,7 +10,9 @@ import textwrap
 from pathlib import Path
 
 STUB_SCRIPT = """\
-A vending machine in a busy hospital hallway can quietly earn more per square foot than the gift shop next to it. That sounds wrong, because a vending machine is just a metal box full of snacks. By the end of this, you'll know exactly who pays whom every time you press B4.
+A vending machine in a busy hospital hallway can quietly earn more per square foot than the gift shop next to it. That sounds wrong, because a vending machine is just a metal box full of snacks.
+
+This is Who Pays Who, where we follow the money behind every business. Today, we find out who gets paid every time you press B4.
 
 Here is the reframe. A vending machine business isn't really a snack business. It's a real estate business that rents tiny pieces of floor from people who don't know what that floor is worth.
 
@@ -29,6 +31,8 @@ Now the risk. Bob's worst year came when his biggest host closed its office and 
 Step back for a second. The whole industry sells convenience, yet its profits depend on the most inconvenient job in it, driving a van to refill machines.
 
 So, who pays whom? You pay Bob. Bob pays the building. And the building, it turns out, was the one holding the valuable thing all along: the hallway you walk past every day.
+
+If this was useful, like the video and subscribe to Who Pays Who for the next breakdown.
 """
 
 STUB_FACTS = """\

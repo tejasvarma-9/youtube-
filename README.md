@@ -127,6 +127,8 @@ python -m pipeline status
 | Thumbnail | `thumbnail` | Gemini draws the subject, code adds the headline and logo | `thumbnail.png` |
 | Review | `review` | | `review/REVIEW.md` |
 
+Every script opens with the hook, then a two-sentence channel intro ("This is Who Pays Who..."), and ends with one like-and-subscribe sentence naming the channel. The rule check (`script_lint.json`) fails a script that lacks either, or that asks for the subscribe anywhere else.
+
 `run` skips stages that are already done. Each stage also runs on its own, for example `python -m pipeline voice how-costco-makes-money`.
 
 ## Costs at 3 videos a week (prices checked 2026-10-03)

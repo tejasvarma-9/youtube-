@@ -18,8 +18,8 @@ Every prompt in this pipeline includes this file. Change the channel's voice her
 
 ## Story arc (the order can flex when the story is better for it)
 
-1. **Hook** within the first three sentences: a contradiction or a surprising number. No greeting and no channel intro.
-2. **Open loop:** tell the viewer what they will understand by the end.
+1. **Hook** within the first three sentences: a contradiction or a surprising number. The hook always comes first, before any greeting.
+2. **Channel intro and open loop**, right after the hook, as its own short paragraph (two sentences, about 10 seconds): "This is Who Pays Who, where we follow the money behind every business. Today, we find out ..." and say what the viewer will understand by the end. Vary the wording from video to video.
 3. **Reframe** what the business really is ("a gym is a subscription business that happens to have dumbbells in it").
 4. **Cost and structure:** what it takes to get in, with real ranges.
 5. **The mechanism:** how the money actually flows, through one named example character or a simple analogy. Compress it into a **one-line model** the viewer can repeat ("monthly dues times members, minus fixed costs").
@@ -28,6 +28,7 @@ Every prompt in this pipeline includes this file. Change the channel's voice her
 8. **Countdown:** numbered mistakes or scenarios that give the back half momentum.
 9. **Zoom out:** one short paragraph that states the paradox of the whole industry.
 10. **Profit potential:** an optimistic and a realistic scenario, with worked numbers, framed as illustrations.
+11. **Close:** end on the payoff line, then one final sentence: "If this was useful, like the video and subscribe to Who Pays Who for the next breakdown." Vary the wording, but it is one sentence, it is the last thing in the script, and it names the channel. The subscribe ask appears nowhere else, never mid-video.
 11. **Payoff:** answer the opening question, then end on a line that calls back to the hook.
 
 ## Techniques every script uses
@@ -57,7 +58,7 @@ Every prompt in this pipeline includes this file. Change the channel's voice her
 - Predict markets, or tell viewers to buy, sell or hold any security, crypto or fund.
 - Promise viewers income ("you will earn"). Profit sections are illustrations ("a mid-size gym can...").
 - Insult or mock real people, or bring in politics.
-- Add a "subscribe" call to action, a sponsor read, or a greeting.
+- Add a sponsor read, a filler greeting ("hey guys", "welcome back", "in this video"), or a subscribe ask anywhere except the final sentence.
 - Copy phrasing or structure from an existing video, including the reference scripts in "Finance Magical Prompt.pdf".
 - Use "So You Want to Own a ___" as a title. It is another channel's series.
 
