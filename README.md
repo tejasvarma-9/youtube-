@@ -244,6 +244,7 @@ To replace a video that is already public, delete it in Studio and upload the ne
 ## Rules to remember
 
 - **Script shape:** hook first, then a two-sentence channel intro ("This is Who Pays Who..."), the video, and one like-and-subscribe sentence naming the channel as the last line. Never ask for the subscribe in the middle.
+- **Three hooks:** every script has a hook at the start, in the middle (about the halfway mark, a question or twist the second half pays off) and at the end (a last question or pointer to the next video, just before the subscribe line). The rule check warns when the middle or end hook is missing.
 - **Claims:** no figure without a source or an "estimate" tag. The title, thumbnail text and angle must not claim more than the numbers show. The fact-check covers the script; the quality check covers the title, thumbnail text and description opening.
 - **Never** paste an API key into chat. Keys live only in `.env` on your Mac.
 - **Approve** only after you have watched the exact video. If you change any file after approving, approve again.

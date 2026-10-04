@@ -64,6 +64,29 @@ def _intro_outro(script: str) -> list[str]:
     return out
 
 
+HOOK_CUE = re.compile(r"\?|\bbut here'?s\b|\bwhat (?:happens|comes) next\b|\bnext\b|\blater\b|\bthe (?:real|hard|catch|twist)\b", re.I)
+
+
+def _hooks(script: str) -> list[str]:
+    """Warn when the middle or the end has no hook cue; the writer is told to add all three."""
+    out = []
+    paragraphs = [p for p in script.split("\n\n") if p.strip()]
+    total = word_count(script)
+    if total < 200 or len(paragraphs) < 4:
+        return out
+    seen, middle = 0, []
+    for p in paragraphs:
+        w = word_count(p)
+        if 0.4 * total <= seen + w / 2 <= 0.65 * total:
+            middle.append(p)
+        seen += w
+    if middle and not any(HOOK_CUE.search(p) for p in middle):
+        out.append("Hook: nothing around the halfway mark opens a new question or teases what is coming; add a middle hook.")
+    if not HOOK_CUE.search(paragraphs[-2]):
+        out.append("Hook: the paragraph before the final subscribe line should end with a hook (a last question or a pointer to the next video).")
+    return out
+
+
 def lint_script(script: str, facts: str) -> dict:
     errors, warnings = [], []
     words = word_count(script)
@@ -79,6 +102,7 @@ def lint_script(script: str, facts: str) -> dict:
         errors.append(f"Number format: \"{m.group(0)}\" will be read badly; write it out in full, like \"$2 million to $5 million\".")
 
     errors += _intro_outro(script)
+    warnings += _hooks(script)
 
     fact_numbers = _numbers(facts)
     missing = sorted(_numbers(script) - fact_numbers, key=lambda s: float(s) if s.replace(".", "").isdigit() else 0)

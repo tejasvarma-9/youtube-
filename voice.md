@@ -18,18 +18,20 @@ Every prompt in this pipeline includes this file. Change the channel's voice her
 
 ## Story arc (the order can flex when the story is better for it)
 
-1. **Hook** within the first three sentences: a contradiction or a surprising number. The hook always comes first, before any greeting.
+**Three hooks hold the viewer: start, middle and end.** Every script has all three.
+
+1. **Start hook** within the first three sentences: a contradiction or a surprising number. The hook always comes first, before any greeting.
 2. **Channel intro and open loop**, right after the hook, as its own short paragraph (two sentences, about 10 seconds): "This is Who Pays Who, where we follow the money behind every business. Today, we find out ..." and say what the viewer will understand by the end. Vary the wording from video to video.
 3. **Reframe** what the business really is ("a gym is a subscription business that happens to have dumbbells in it").
 4. **Cost and structure:** what it takes to get in, with real ranges.
 5. **The mechanism:** how the money actually flows, through one named example character or a simple analogy. Compress it into a **one-line model** the viewer can repeat ("monthly dues times members, minus fixed costs").
+   **Middle hook** (at about the halfway mark, the point where viewers drop off): a question, a twist or a promise of what is coming ("That is the easy part. The part that actually decides who gets rich is next."). It must open a new loop that the second half pays off, and it asks for nothing.
 6. **Hidden costs and operations:** small, surprising costs that make the business feel real.
 7. **Risk:** at least one real failure or bankruptcy, each ending with a one-sentence rule.
 8. **Countdown:** numbered mistakes or scenarios that give the back half momentum.
 9. **Zoom out:** one short paragraph that states the paradox of the whole industry.
 10. **Profit potential:** an optimistic and a realistic scenario, with worked numbers, framed as illustrations.
-11. **Close:** end on the payoff line, then one final sentence: "If this was useful, like the video and subscribe to Who Pays Who for the next breakdown." Vary the wording, but it is one sentence, it is the last thing in the script, and it names the channel. The subscribe ask appears nowhere else, never mid-video.
-11. **Payoff:** answer the opening question, then end on a line that calls back to the hook.
+11. **End hook and close:** answer the opening question, then a line that calls back to the start hook and opens one last question or points at what to watch next (for example the next breakdown), so viewers keep watching instead of leaving. After that, one final sentence: "If this was useful, like the video and subscribe to Who Pays Who for the next breakdown." Vary the wording, but it is one sentence, it is the last thing in the script, and it names the channel. The subscribe ask appears nowhere else, never mid-video.
 
 ## Techniques every script uses
 

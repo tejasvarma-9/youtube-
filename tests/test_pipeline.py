@@ -37,6 +37,18 @@ class LintTests(unittest.TestCase):
             self.assertIn(needle.lower(), errors.lower())
         self.assertNotIn("Unchecked figure: 12", errors)
 
+    def test_hook_warnings(self):
+        filler = " ".join(["plain"] * 60)
+        intro = "A hook. This is Who Pays Who, today we look at snacks."
+        outro = "If this was useful, like the video and subscribe to Who Pays Who."
+        flat = "\n\n".join([intro] + [filler + "."] * 6 + ["The end of it.", outro])
+        msgs = " ".join(lint_script(flat, "")["warnings"])
+        self.assertIn("middle hook", msgs)
+        self.assertIn("before the final subscribe", msgs)
+        paras = [intro] + [filler + "."] * 3 + ["But here's the catch: who pays for it?"] + [filler + "."] * 2
+        hooked = "\n\n".join(paras + ["So what is next? The next breakdown.", outro])
+        self.assertFalse([w for w in lint_script(hooked, "")["warnings"] if w.startswith("Hook")])
+
     def test_intro_and_outro_rules(self):
         hook = "A hallway machine can out-earn a gift shop."
         intro = "This is Who Pays Who, where we follow the money. Today, who pays for the snacks."
