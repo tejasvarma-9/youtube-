@@ -253,7 +253,7 @@ To replace a video that is already public, delete it in Studio and upload the ne
 
 ## Rules to remember
 
-- **Script shape:** hook first, then a two-sentence channel intro ("This is Who Pays Who..."), the video, and one like-and-subscribe sentence naming the channel as the last line. Never ask for the subscribe in the middle.
+- **Script shape:** hook first, then a two-sentence channel intro ("Welcome to Who Pays Who. Today, we find out ..."), the video, and one like-and-subscribe sentence naming the channel as the last line. Never ask for the subscribe in the middle.
 - **Three hooks:** every script has a hook at the start, in the middle (about the halfway mark, a question or twist the second half pays off) and at the end (a last question or pointer to the next video, just before the subscribe line). The rule check warns when the middle or end hook is missing.
 - **Claims:** no figure without a source or an "estimate" tag. The title, thumbnail text and angle must not claim more than the numbers show. The fact-check covers the script; the quality check covers the title, thumbnail text and description opening.
 - **Never** paste an API key into chat. Keys live only in `.env` on your Mac.
@@ -275,7 +275,7 @@ To replace a video that is already public, delete it in Studio and upload the ne
 | Quality check | `qc` | faster-whisper re-listens; ffmpeg measures sound and picture; Claude checks pictures and claims | `qc.md`, `qc.json` |
 | Review | `review` | | `review/REVIEW.md` |
 
-Every script opens with the hook, then a two-sentence channel intro ("This is Who Pays Who..."), and ends with one like-and-subscribe sentence naming the channel. The rule check (`script_lint.json`) fails a script that lacks either, or that asks for the subscribe anywhere else.
+Every script opens with the hook, then a two-sentence channel intro ("Welcome to Who Pays Who. Today, we find out ..."), and ends with one like-and-subscribe sentence naming the channel. The rule check (`script_lint.json`) fails a script that lacks either, or that asks for the subscribe anywhere else.
 
 `run` skips stages that are already done. Each stage also runs on its own, for example `python -m pipeline voice how-costco-makes-money`.
 

@@ -21,7 +21,7 @@ Every prompt in this pipeline includes this file. Change the channel's voice her
 **Three hooks hold the viewer: start, middle and end.** Every script has all three.
 
 1. **Start hook** within the first three sentences: a contradiction or a surprising number. The hook always comes first, before any greeting.
-2. **Channel intro and open loop**, right after the hook, as its own short paragraph (two sentences, about 10 seconds): "This is Who Pays Who, where we follow the money behind every business. Today, we find out ..." and say what the viewer will understand by the end. Vary the wording from video to video.
+2. **Channel intro and open loop**, right after the hook, as its own short paragraph (two short sentences, about 5 seconds): "Welcome to Who Pays Who. Today, we find out who really pays for ..." and say what the viewer will understand by the end. Vary the wording slightly from video to video, but always welcome the viewer by the channel name.
 3. **Reframe** what the business really is ("a gym is a subscription business that happens to have dumbbells in it").
 4. **Cost and structure:** what it takes to get in, with real ranges.
 5. **The mechanism:** how the money actually flows, through one named example character or a simple analogy. Compress it into a **one-line model** the viewer can repeat ("monthly dues times members, minus fixed costs").
