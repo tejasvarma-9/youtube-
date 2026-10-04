@@ -263,7 +263,7 @@ def _review_with_claude(video: Video, failures: list, warnings: list, checks: di
     shots = video.read_json("shots.json")["shots"]
     sheets = contact_sheets(video)
     files = [str(p.relative_to(video.dir)) for p in sheets] + ["thumbnail.png"]
-    text = fill(prompt("qc"),
+    text = fill(prompt("qc.md"),
                 FILES="\n".join(files),
                 SCENES="\n".join(f"shot {s['id']}: {s.get('scene', '')[:200]}" for s in shots),
                 TITLE=meta["title"], THUMBNAIL_TEXT=meta["thumbnail_text"],

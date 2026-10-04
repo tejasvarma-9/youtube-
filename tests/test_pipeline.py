@@ -29,6 +29,19 @@ class TextTests(unittest.TestCase):
         self.assertEqual(extract_json('noise ===JSON===\n```json\n{"a": 1}\n```\n===END==='), {"a": 1})
 
 
+class PromptFileTests(unittest.TestCase):
+    def test_every_prompt_name_in_code_exists(self):
+        import re
+        from pathlib import Path
+        from pipeline import config
+        names = set()
+        for f in Path(config.ROOT / "pipeline").glob("*.py") if hasattr(config, "ROOT") else Path("pipeline").glob("*.py"):
+            names |= set(re.findall(r'prompt\("([^"]+)"\)', f.read_text()))
+        self.assertTrue(names)
+        for n in names:
+            self.assertTrue((config.PROMPTS / n).exists(), n)
+
+
 class LintTests(unittest.TestCase):
     def test_flags_policy_format_and_unchecked_numbers(self):
         script = "Welcome back! Costs run $2-5 million and margins are 12%. Hit the bell for more."
