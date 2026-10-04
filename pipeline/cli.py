@@ -8,10 +8,10 @@ import shutil
 import sys
 
 from . import (align, config, s1_script, s2_factcheck, s3_voiceover, s4_shots, s5_images, s6_assemble, s7_metadata,
-               s8_thumbnail, s9_review)
+               s8_thumbnail, s9_review, s10_qc)
 from .common import StageError, Video, log, slugify
 
-STAGES = ["script", "factcheck", "voice", "shots", "images", "assemble", "metadata", "thumbnail", "review"]
+STAGES = ["script", "factcheck", "voice", "shots", "images", "assemble", "metadata", "thumbnail", "qc", "review"]
 
 
 def _done(v: Video, stage: str) -> bool:
@@ -35,6 +35,8 @@ def _done(v: Video, stage: str) -> bool:
         return (d / "metadata.json").exists()
     if stage == "thumbnail":
         return (d / "thumbnail.png").exists()
+    if stage == "qc":
+        return s10_qc.is_current(v)
     return False  # review is cheap; always rebuild
 
 
@@ -56,6 +58,8 @@ def run_stage(stage: str, v: Video, a) -> None:
         s7_metadata.run(v, stub=a.stub)
     elif stage == "thumbnail":
         s8_thumbnail.run(v, stub=a.stub)
+    elif stage == "qc":
+        s10_qc.run(v, stub=a.stub)
     elif stage == "review":
         s9_review.run(v, stub=a.stub)
 
@@ -83,6 +87,48 @@ def cmd_run(a, v: Video) -> None:
             continue
         run_stage(stage, v, a)
     log(f"\nDone. Open out/{v.slug}/review/REVIEW.md")
+
+
+MAX_REVISE_ROUNDS = 3
+
+
+def cmd_auto(a) -> Video:
+    """The producer: one command from topic to review package, fixing fact-check failures on its own."""
+    slug = a.slug or slugify(a.topic)
+    if (config.OUT / slug / "brief.json").exists():
+        log(f"Resuming '{slug}' (finished steps are skipped).")
+        v = Video(slug)
+    else:
+        v = cmd_new(a)
+    a.from_stage = None
+    rounds = 0
+    while True:
+        try:
+            cmd_run(a, v)
+            break
+        except StageError:
+            fc = v.dir / "factcheck.json"
+            failed_check = fc.exists() and not json.loads(fc.read_text()).get("passed", False)
+            if not failed_check or rounds >= MAX_REVISE_ROUNDS:
+                if failed_check:
+                    log(f"\nThe fact-check still fails after {rounds} revisions. Read out/{slug}/factcheck.md, "
+                        f"then run: python -m pipeline revise {slug} --notes <file>")
+                raise
+            rounds += 1
+            log(f"\n[auto] fact-check failed; revision {rounds} of {MAX_REVISE_ROUNDS}")
+            try:
+                s2_factcheck.revise(v, stub=a.stub)
+            except StageError as e:
+                log(f"  {str(e).splitlines()[0]}")
+    qc = v.read_json("qc.json")
+    log("")
+    if qc["passed"]:
+        log(f"[auto] Finished and the quality check PASSED. Watch it, then: python -m pipeline approve {slug}")
+    else:
+        log(f"[auto] Finished, but the quality check FAILED ({len(qc['failures'])} problems). "
+            f"See out/{slug}/qc.md before approving.")
+    log(f"Review: open out/{slug}/review/REVIEW.md")
+    return v
 
 
 def cmd_status() -> None:
@@ -147,6 +193,14 @@ def main(argv=None) -> int:
     n.add_argument("--slug")
     n.add_argument("--run", action="store_true", help="run the whole pipeline right after")
 
+    au = sub.add_parser("auto", help="the producer: topic to finished, quality-checked video in one command")
+    au.add_argument("topic")
+    au.add_argument("--angle", help="the one original insight, calculation or comparison")
+    au.add_argument("--character", help='recurring example character, e.g. "Bob, a first-time gym owner"')
+    au.add_argument("--notes", help="anything else the writer should know")
+    au.add_argument("--words", type=int, default=config.TARGET_WORDS)
+    au.add_argument("--slug")
+
     r = sub.add_parser("run", help="run every stage that isn't done yet")
     r.add_argument("slug")
     r.add_argument("--from", dest="from_stage", choices=STAGES, help="re-run from this stage onward")
@@ -184,6 +238,8 @@ def main(argv=None) -> int:
                 cmd_run(a, v)
         elif a.cmd == "run":
             cmd_run(a, Video(a.slug))
+        elif a.cmd == "auto":
+            cmd_auto(a)
         elif a.cmd in STAGES:
             run_stage(a.cmd, Video(a.slug), a)
         elif a.cmd == "revise":
@@ -194,7 +250,7 @@ def main(argv=None) -> int:
         elif a.cmd == "check":
             s1_script.check(Video(a.slug))
         elif a.cmd == "approve":
-            s9_review.approve(Video(a.slug), a.publish_at)
+            s9_review.approve(Video(a.slug), a.publish_at, force=a.force)
         elif a.cmd == "status":
             cmd_status()
         elif a.cmd == "doctor":

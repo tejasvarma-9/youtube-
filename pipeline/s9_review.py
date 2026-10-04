@@ -56,9 +56,18 @@ def run(video: Video, stub: bool = False) -> None:
     if not burned:
         warnings.append("video.mp4 has no burned-in captions (your ffmpeg can't). captions.srt is included.")
 
+    qc = json.loads((video.dir / "qc.json").read_text()) if (video.dir / "qc.json").exists() else None
+    if qc is None:
+        qc_lines = ["## Quality check: not run", "", f"Run: python -m pipeline qc {video.slug}", ""]
+    elif qc["passed"]:
+        qc_lines = ["## Quality check: passed", ""] + [f"- {w}" for w in qc["warnings"]] + ["", "Details: ../qc.md", ""]
+    else:
+        qc_lines = (["## Quality check: FAILED (fix these before approving)", ""] + [f"- {f}" for f in qc["failures"]]
+                    + [""] + [f"- (worth a look) {w}" for w in qc["warnings"]] + ["", "Details: ../qc.md", ""])
     lines = [
         f"# Review: {meta['title']}",
         "",
+        *qc_lines,
         f"{'**STUB RUN: placeholder audio, images and facts. Not for upload.**' if stub or tl.get('voice') == 'stub' else ''}",
         "",
         f"- **Length:** {tl['duration'] / 60:.1f} minutes, {lint['words']:,} words, {len(shots)} images",
@@ -123,12 +132,18 @@ def fingerprint(video: Video) -> dict:
     return out
 
 
-def approve(video: Video, publish_at: str = "") -> None:
+def approve(video: Video, publish_at: str = "", force: bool = False) -> None:
+    from . import s10_qc
     tl = video.read_json("timeline.json")
     if tl.get("voice") == "stub":
         raise StageError("This is a stub run with placeholder audio and images. It can't be approved.")
     if not video.read_json("factcheck.json").get("passed"):
         raise StageError("Fact-check hasn't passed, so this video can't be approved.")
+    if not s10_qc.is_current(video):
+        raise StageError(f"The quality check hasn't run on this exact video. Run: python -m pipeline qc {video.slug}")
+    if not video.read_json("qc.json")["passed"] and not force:
+        raise StageError(f"The quality check failed; see out/{video.slug}/qc.md. Fix it, or approve anyway with --force "
+                         "if you've checked each problem yourself.")
     record = {
         "approved_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "publish_at": publish_at,

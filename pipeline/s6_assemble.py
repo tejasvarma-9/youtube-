@@ -257,7 +257,9 @@ def run(video: Video, stub: bool = False, captions: bool = True) -> None:
     if captions:
         cmd += ["-vf", f"subtitles=captions.srt:force_style='{CAPTION_STYLE}'"]
     cmd += ["-map", "0:v", "-map", "1:a", "-c:v", "libx264", "-preset", "medium", "-crf", "20",
-            "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-shortest",
+            "-pix_fmt", "yuv420p",
+            # Level the voice to YouTube's playback loudness (about -14 LUFS), peaks under -1.5 dB.
+            "-af", "loudnorm=I=-14:TP=-1.5:LRA=11", "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-shortest",
             "-movflags", "+faststart", "video.mp4"]
     log("  assembling video.mp4 ...")
     sh(cmd, cwd=video.dir)

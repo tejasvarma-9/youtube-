@@ -11,7 +11,8 @@ from .common import StageError, log
 WEB_TOOLS = ["WebSearch", "WebFetch"]
 
 
-def ask(prompt_text: str, kind: str, *, web: bool = False, stub: bool = False, context: dict | None = None) -> str:
+def ask(prompt_text: str, kind: str, *, web: bool = False, stub: bool = False, context: dict | None = None,
+        read_dir: str | None = None) -> str:
     """Send one prompt and return the model's text answer.
 
     kind names the stage ("script", "factcheck", "shots", "metadata") so stub
@@ -29,12 +30,16 @@ def ask(prompt_text: str, kind: str, *, web: bool = False, stub: bool = False, c
         cmd += ["--model", config.CLAUDE_MODEL]
     if web:
         cmd += ["--allowedTools", *WEB_TOOLS]
+    if read_dir:
+        # Lets Claude open files (pictures) in one folder, read-only.
+        cmd += ["--add-dir", read_dir, "--allowedTools", "Read"]
     # The writer only needs to read the web; it never touches files or the shell.
     cmd += ["--disallowedTools", "Bash", "Edit", "Write", "NotebookEdit"]
     log(f"  asking Claude ({kind}{', with web research' if web else ''}); this can take several minutes...")
     try:
         res = subprocess.run(
-            cmd, input=prompt_text, capture_output=True, text=True, timeout=config.CLAUDE_TIMEOUT_S
+            cmd, input=prompt_text, capture_output=True, text=True, timeout=config.CLAUDE_TIMEOUT_S,
+            cwd=read_dir or None,
         )
     except subprocess.TimeoutExpired as e:
         raise StageError(f"Claude took longer than {config.CLAUDE_TIMEOUT_S}s on the {kind} step.") from e

@@ -235,6 +235,29 @@ class AlignTests(unittest.TestCase):
         self.assertEqual(second_start, s6_assemble.fmt_ts(long["words"][k][0], srt=True))
 
 
+class QualityCheckTests(unittest.TestCase):
+    def test_caption_drift_and_missing_words(self):
+        from pipeline.s10_qc import caption_drift
+        cues = [{"start": 0.0, "text": "Costco sells cheap food"},
+                {"start": 2.0, "text": "but fees pay the bills"},
+                {"start": 4.0, "text": "every single year for decades now"}]
+        heard = [("Costco", 0.1, 0.4), ("sells", 0.4, 0.7), ("cheap", 0.7, 1.0), ("food", 1.0, 1.3),
+                 ("but", 3.6, 3.8), ("fees", 3.8, 4.1), ("pay", 4.1, 4.3), ("the", 4.3, 4.4), ("bills", 4.4, 4.8),
+                 ("every", 5.0, 5.2)]
+        r = caption_drift(cues, heard)
+        d = {x["line"]: x["drift"] for x in r["drifts"]}
+        self.assertLess(abs(d[0]), 0.2)
+        self.assertAlmostEqual(d[1], -1.6, places=2)  # the caption came 1.6s before the words
+        self.assertEqual(len(r["missing"]), 1)
+        self.assertIn("single year for decades", r["missing"][0]["text"])
+
+    def test_srt_parsing(self):
+        from pipeline.s10_qc import _srt_cues
+        cues = _srt_cues("1\n00:00:01,500 --> 00:00:03,000\nHello there\n\n2\n00:01:02,250 --> 00:01:04,000\nSecond line\n")
+        self.assertEqual([c["start"] for c in cues], [1.5, 62.25])
+        self.assertEqual(cues[1]["text"], "Second line")
+
+
 class UpscaleTests(unittest.TestCase):
     """The upscaler is an outside program; a tiny fake stands in for it here."""
 
@@ -326,6 +349,45 @@ class StubEndToEnd(unittest.TestCase):
         self.assertEqual(cli.main(["approve", self.slug]), 1)
         self.assertFalse((d / "approval.json").exists())
         self.assertTrue(json.loads((d / "factcheck.json").read_text())["passed"])
+
+    def test_auto_producer_and_quality_gate(self):
+        code = cli.main(["--stub", "auto", "How vending machines make money", "--slug", self.slug])
+        self.assertEqual(code, 0)
+        d = config.OUT / self.slug
+        self.assertTrue(json.loads((d / "qc.json").read_text())["passed"])
+        self.assertIn("Quality check", (d / "review" / "REVIEW.md").read_text())
+        # Pretend this is a real run whose quality check failed: approve refuses unless forced.
+        tl = json.loads((d / "timeline.json").read_text())
+        tl["voice"] = "Iapetus"
+        (d / "timeline.json").write_text(json.dumps(tl))
+        qc = json.loads((d / "qc.json").read_text())
+        st = (d / "video.mp4").stat()
+        qc.update(passed=False, failures=["test problem"], video=f"{st.st_size}|{st.st_mtime_ns}")
+        (d / "qc.json").write_text(json.dumps(qc))
+        self.assertEqual(cli.main(["approve", self.slug]), 1)
+        self.assertEqual(cli.main(["approve", self.slug, "--force"]), 0)
+        # A changed video needs a new quality check before approval.
+        with open(d / "video.mp4", "ab") as f:
+            f.write(b"0")
+        self.assertEqual(cli.main(["approve", self.slug, "--force"]), 1)
+
+    def test_auto_revises_a_failed_factcheck(self):
+        from pipeline import s2_factcheck
+        self.assertEqual(cli.main(["--stub", "new", "How vending machines make money", "--slug", self.slug]), 0)
+        d = config.OUT / self.slug
+        calls = {"n": 0}
+
+        def failing_run(a, v):
+            calls["n"] += 1
+            if calls["n"] <= 2:
+                (d / "factcheck.json").write_text(json.dumps({"passed": False}))
+                raise cli.StageError("fact-check failed")
+            (d / "qc.json").write_text(json.dumps({"passed": True, "failures": [], "warnings": []}))
+
+        with mock.patch.object(cli, "cmd_run", side_effect=failing_run), \
+                mock.patch.object(s2_factcheck, "revise") as revise:
+            self.assertEqual(cli.main(["--stub", "auto", "How vending machines make money", "--slug", self.slug]), 0)
+        self.assertEqual(revise.call_count, 2)
 
     def test_revise_after_failed_factcheck(self):
         from pipeline import llm, s2_factcheck

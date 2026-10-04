@@ -24,34 +24,44 @@ python -m pipeline doctor
 
 The insight (`--angle`) is the one idea that makes the video yours. It must be something the numbers show. "Fees are about half of operating profit" is fine. "The card is the profit" is not, because it overstates. Claims in the angle, the title and the thumbnail text must all be safe to say out loud.
 
-**Step 3. Make the video (mostly waiting)**
+Every Sunday the topic scout posts three ideas in the project, each with a checked angle and the exact command to paste (see `docs/TOPIC_SCOUT.md`). Reply with the number you want, or use your own topic.
+
+**Step 3. Make the video with one command (mostly waiting)**
 
 ```bash
-python -m pipeline new "How <business> makes money" --angle "<your insight>"
-python -m pipeline run <slug>
+python -m pipeline auto "How <business> makes money" --angle "<your insight>"
 ```
 
-The pipeline prints the slug. If `run` stops, read the line that starts with `STOPPED:`:
+This is the producer. It writes the script, fact-checks it and fixes what the fact-check flags (up to 3 rounds), then makes the voice, pictures, video, title, description and thumbnail, and finally runs the quality check. If it stops, read the line that starts with `STOPPED:`:
 
-- Fact-check failed: `python -m pipeline revise <slug>`, then `python -m pipeline run <slug>` again. Repeat up to a few times.
-- Voice quota used up, or a Claude login error: run the same `run` command again later, or run `claude` and then `/login`. Finished steps are skipped, nothing is lost.
+- Fact-check still failing after 3 rounds: read `out/<slug>/factcheck.md`, then `python -m pipeline revise <slug> --notes my-notes.txt`, then run the same `auto` command again.
+- Voice quota used up, or a Claude login error: run the same `auto` command again later, or run `claude` and then `/login` first. Finished steps are skipped, nothing is lost.
 
-**Step 4. Watch it and check these things**
+The step-by-step commands (`new`, then `run <slug>`) still work if you prefer them.
+
+**Step 4. Read the quality check, then watch it**
 
 ```bash
+open out/<slug>/qc.md
 open out/<slug>/review/REVIEW.md
 open out/<slug>/video.mp4
 ```
 
+The quality check runs on its own at the end of `auto`. It listens to the finished video again and flags caption lines more than half a second off the voice, words the voice skipped or garbled, loudness, long silences, black frames and soft pictures. Claude also looks at every picture and the thumbnail (garbled text, real logos or people, wrong style) and checks the title, thumbnail text and description opening against the fact list. "Must fix" items block `approve`. To re-run it after a fix: `python -m pipeline qc <slug>`.
+
+Then check yourself:
+
 - Does the script open with the hook, then "This is Who Pays Who..." and end with one like-and-subscribe line? (The rule check enforces this.)
 - Do the captions match the voice? Do the pictures look sharp?
-- Does the thumbnail text claim only what the numbers show? To change it, edit `"thumbnail_text"` in `out/<slug>/metadata.json`, then run `python -m pipeline thumbnail <slug>`.
+- Does the thumbnail text claim only what the numbers show (the quality check also checks this)? To change it, edit `"thumbnail_text"` in `out/<slug>/metadata.json`, then run `python -m pipeline thumbnail <slug>`.
 
 **Step 5. Approve**
 
 ```bash
 python -m pipeline approve <slug>
 ```
+
+`approve` refuses if the quality check failed or hasn't run on this exact video. If you've checked a flagged problem yourself and it's fine, `python -m pipeline approve <slug> --force`.
 
 **Step 6. Upload by hand in YouTube Studio**
 
@@ -221,7 +231,7 @@ To replace a video that is already public, delete it in Studio and upload the ne
 ## Rules to remember
 
 - **Script shape:** hook first, then a two-sentence channel intro ("This is Who Pays Who..."), the video, and one like-and-subscribe sentence naming the channel as the last line. Never ask for the subscribe in the middle.
-- **Claims:** no figure without a source or an "estimate" tag. The title, thumbnail text and angle must not claim more than the numbers show. The fact-check covers the script only, so check the thumbnail text yourself.
+- **Claims:** no figure without a source or an "estimate" tag. The title, thumbnail text and angle must not claim more than the numbers show. The fact-check covers the script; the quality check covers the title, thumbnail text and description opening.
 - **Never** paste an API key into chat. Keys live only in `.env` on your Mac.
 - **Approve** only after you have watched the exact video. If you change any file after approving, approve again.
 - **Costs:** about $1 per video for voice and images. Script, fact-check, shot list and metadata use your Claude plan and cost nothing extra.
@@ -238,6 +248,7 @@ To replace a video that is already public, delete it in Studio and upload the ne
 | Assembly | `assemble` | ffmpeg: slow zoom and pan, burned-in captions | `video.mp4`, `captions.srt` |
 | Metadata | `metadata` | Claude Code; title and chapter checks | `metadata.json`, `description.txt` |
 | Thumbnail | `thumbnail` | Gemini draws the subject, code adds the headline and logo | `thumbnail.png` |
+| Quality check | `qc` | faster-whisper re-listens; ffmpeg measures sound and picture; Claude checks pictures and claims | `qc.md`, `qc.json` |
 | Review | `review` | | `review/REVIEW.md` |
 
 Every script opens with the hook, then a two-sentence channel intro ("This is Who Pays Who..."), and ends with one like-and-subscribe sentence naming the channel. The rule check (`script_lint.json`) fails a script that lacks either, or that asks for the subscribe anywhere else.
