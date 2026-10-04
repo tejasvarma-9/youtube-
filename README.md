@@ -117,6 +117,17 @@ python -m pipeline align <video>
 python -m pipeline run <video> --from assemble
 ```
 
+### Graphify code map (optional, only for working on this code with Claude Code)
+
+Graphify builds a map of this repo's code so Claude Code finds its way around with fewer file reads. It does nothing for making videos, so skip it unless you open Claude Code in this folder to change the pipeline. Cloud sessions install it on their own. On your Mac:
+
+```bash
+brew install uv          # if you don't have it
+uv tool install graphifyy
+```
+
+From then on, each Claude Code session in this folder rebuilds the map in `graphify-out/` (a few seconds, no API cost). Without Graphify installed, nothing changes.
+
 ## 2. The Google key (do this once, never paste it in chat)
 
 One key covers images and the voiceover.
