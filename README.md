@@ -198,6 +198,13 @@ python -m pipeline revise how-costco-makes-money --notes my-notes.txt
 
 If it still fails, run `revise` once more, or fix `script.txt` and `facts.txt` yourself and run `python -m pipeline factcheck how-costco-makes-money`.
 
+If the quality check says the voice skipped or garbled a sentence, re-record just that part (use a few words from the sentence):
+
+```bash
+python -m pipeline redo-voice how-costco-makes-money "a way to fail"
+python -m pipeline run how-costco-makes-money --from voice
+```
+
 To change one image, edit its `scene` in `shots.json`, delete `images/shot_NNN.png`, then:
 
 ```bash

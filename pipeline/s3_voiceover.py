@@ -27,6 +27,26 @@ RATE = 24000
 TTS_URL = "https://texttospeech.googleapis.com/v1/text:synthesize"
 
 
+def redo(video: Video, phrase: str, stub: bool = False) -> int:
+    """Forget the cached recording of every chunk containing the phrase, so `voice` records it again."""
+    provider = config.TTS_PROVIDER
+    voice = "stub" if stub else (config.GEMINI_TTS_VOICE if provider == "gemini" else config.TTS_VOICE)
+    voice_id = f"{provider}:{config.GEMINI_TTS_MODEL}:{voice}" if provider == "gemini" else f"{provider}:{voice}"
+    rows = sentences_with_paragraphs(video.read_text("script.txt"))
+    chunks = _chunk_rows(rows, config.GEMINI_TTS_CHUNK_CHARS) if provider == "gemini" else [[r] for r in rows]
+    gone = 0
+    for chunk in chunks:
+        text = _chunk_text(chunk)
+        if phrase.lower() not in text.lower():
+            continue
+        key = hashlib.sha1(f"{voice_id}|{config.TTS_PACE}|{config.GEMINI_TTS_STYLE}|{text}".encode()).hexdigest()[:12]
+        wav = video.path("audio", f"{key}.wav")
+        if wav.exists():
+            wav.unlink()
+            gone += 1
+    return gone
+
+
 def run(video: Video, stub: bool = False, force: bool = False) -> None:
     s2_factcheck.require_pass(video, force)
     provider = config.TTS_PROVIDER

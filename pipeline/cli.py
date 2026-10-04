@@ -218,6 +218,9 @@ def main(argv=None) -> int:
         sp = sub.add_parser(s, help=f"run only the {s} stage")
         sp.add_argument("slug")
     sub.add_parser("check", help="re-check script.txt after a hand edit").add_argument("slug")
+    rv = sub.add_parser("redo-voice", help="re-record the part of the voiceover that contains a phrase (about 1 request)")
+    rv.add_argument("slug")
+    rv.add_argument("phrase", help='a few words from the sentence that sounds wrong, e.g. "a way to fail"')
     sub.add_parser("align", help="re-time the captions from the finished voiceover (then run --from assemble)").add_argument("slug")
     rv = sub.add_parser("revise", help="have Claude fix what the fact-check flagged, then fact-check again")
     rv.add_argument("slug")
@@ -255,6 +258,11 @@ def main(argv=None) -> int:
         elif a.cmd == "revise":
             notes = open(a.notes).read() if a.notes else ""
             s2_factcheck.revise(Video(a.slug), stub=a.stub, notes=notes)
+        elif a.cmd == "redo-voice":
+            n = s3_voiceover.redo(Video(a.slug), a.phrase, stub=a.stub)
+            if not n:
+                raise StageError(f'No recorded part of the voiceover contains "{a.phrase}". Check the spelling against script.txt.')
+            log(f"  forgot {n} recorded part(s). Now run: python -m pipeline run {a.slug} --from voice")
         elif a.cmd == "align":
             cmd_align(Video(a.slug))
         elif a.cmd == "check":

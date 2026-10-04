@@ -7,7 +7,7 @@ Recurring character: {{CHARACTER}}
 
 For each shot, describe one full scene that shows what the narration is saying, readable in 2 seconds:
 - Name the setting, the figures and what they are doing, and the 1 to 3 large labels or price tags drawn into the scene (exact text in quotes, short, all caps).
-- Use numbers from the narration on labels where they help. Never draw a real company logo or a real person: show a generic building or product, and put the company name on a plain sign at most.
+- Use numbers from the narration on labels where they help. Never draw a real company logo or a real person: show a generic building or product, and put the company name on a plain sign at most. Never draw another company's name or trademark style on a sign either (for a defunct rental chain, write "VIDEO RENTAL"). The image model garbles small text, so keep every drawn word short and large, never draw receipts, fine print, maps with place names, or tiny chart labels, and when a chart shows percentages use only the figures in the narration.
 - Vary the composition from shot to shot (wide scene, close-up on an object, split comparison, simple chart drawn on a whiteboard).
 - If the recurring character appears, describe them using exactly the locked description, word for word.
 - Write 40 to 80 words per scene. Don't mention style; a style suffix is added later.
