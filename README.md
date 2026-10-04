@@ -55,7 +55,7 @@ Then check yourself:
 
 - Does the script open with the hook, then "This is Who Pays Who..." and end with one like-and-subscribe line? (The rule check enforces this.)
 - Do the captions match the voice? Do the pictures look sharp?
-- Does the thumbnail text claim only what the numbers show (the quality check also checks this)? To change it, edit `"thumbnail_text"` in `out/<slug>/metadata.json`, then run `python -m pipeline thumbnail <slug>`.
+- Does the thumbnail text claim only what the numbers show (the quality check also checks this)? To change it, edit `"thumbnail_text"` in `out/<slug>/metadata.json`, then run `python -m pipeline thumbnail <slug>`. To change the description opening, edit `"description_intro"` there and run `python -m pipeline metadata <slug>`. Your edits survive rebuilds as long as the script is unchanged; delete `metadata.json` to have Claude write fresh ones.
 
 **Step 5. Approve**
 

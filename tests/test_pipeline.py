@@ -375,6 +375,16 @@ class StubEndToEnd(unittest.TestCase):
         self.assertFalse((d / "approval.json").exists())
         self.assertTrue(json.loads((d / "factcheck.json").read_text())["passed"])
 
+        # Rebuilding keeps hand edits to the title, thumbnail text and description.
+        m = json.loads((d / "metadata.json").read_text())
+        m["thumbnail_text"] = "MY OWN TEXT"
+        m["description_intro"] = "My own opening."
+        (d / "metadata.json").write_text(json.dumps(m))
+        self.assertEqual(cli.main(["--stub", "run", self.slug, "--from", "assemble"]), 0)
+        m = json.loads((d / "metadata.json").read_text())
+        self.assertEqual(m["thumbnail_text"], "MY OWN TEXT")
+        self.assertTrue((d / "description.txt").read_text().startswith("My own opening."))
+
     def test_auto_producer_and_quality_gate(self):
         code = cli.main(["--stub", "auto", "How vending machines make money", "--slug", self.slug])
         self.assertEqual(code, 0)
