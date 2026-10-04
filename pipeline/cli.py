@@ -106,6 +106,8 @@ def cmd_doctor() -> int:
         import PIL  # noqa: F401
     except ImportError:
         problems.append("Pillow isn't installed: pip install -r requirements.txt")
+    if not s6_assemble.find_upscaler():
+        notes.append("Image upscaler not installed, so videos look a little soft on big screens (README: 'Sharper images').")
     if not s5_images.style_refs():
         problems.append("assets/style-refs/ has no approved style frames yet (README: 'Pick the style frames').")
     for p in problems:

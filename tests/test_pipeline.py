@@ -192,6 +192,49 @@ class VoiceChunkTests(unittest.TestCase):
         self.assertLess(len(s3_voiceover._chunk_rows(rows, 1500)), 12)
 
 
+class UpscaleTests(unittest.TestCase):
+    """The upscaler is an outside program; a tiny fake stands in for it here."""
+
+    def setUp(self):
+        import sys
+        import tempfile
+        from pathlib import Path
+        from PIL import Image
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.img = self.tmp / "shot_001.png"
+        Image.new("RGB", (1376, 768), "white").save(self.img)
+        fake = self.tmp / "fake-upscaler"
+        fake.write_text(
+            f"#!{sys.executable}\n"
+            "import sys\nfrom PIL import Image\n"
+            "a = sys.argv\nsrc, dst = a[a.index('-i') + 1], a[a.index('-o') + 1]\n"
+            "im = Image.open(src)\nim.resize((im.width * 2, im.height * 2)).save(dst)\n")
+        fake.chmod(0o755)
+        self.fake = fake
+        s6_assemble.find_upscaler.cache_clear()
+        self.addCleanup(s6_assemble.find_upscaler.cache_clear)
+        self.addCleanup(s6_assemble._upscale_failed.clear)
+
+    def test_upscales_small_pictures_and_caches(self):
+        from PIL import Image
+        with mock.patch.object(config, "UPSCALER_BIN", str(self.fake)):
+            out = s6_assemble.upscale(self.img)
+            self.assertNotEqual(out, self.img)
+            self.assertEqual(Image.open(out).size, (2752, 1536))
+            self.assertEqual(s6_assemble.upscale(self.img), out)
+
+    def test_falls_back_when_the_upscaler_fails(self):
+        self.fake.write_text("#!/bin/sh\nexit 3\n")
+        with mock.patch.object(config, "UPSCALER_BIN", str(self.fake)), mock.patch("pipeline.s6_assemble.log"):
+            self.assertEqual(s6_assemble.upscale(self.img), self.img)
+
+    def test_no_upscaler_means_original(self):
+        with mock.patch.object(config, "UPSCALER_BIN", str(self.tmp / "missing")), \
+                mock.patch("shutil.which", return_value=None):
+            self.assertEqual(s6_assemble.upscale(self.img), self.img)
+
+
 class FfmpegDetectionTests(unittest.TestCase):
     PLAIN = " ... zoompan  V->V\n"
     FULL = " ... zoompan  V->V\n ... subtitles  V->V\n"

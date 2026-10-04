@@ -81,6 +81,10 @@ def voice_cost(provider: str, seconds: float, chars: int) -> float:
 
 # Video.
 WIDTH, HEIGHT, FPS = 1920, 1080, 30
+# The image model makes 1K pictures (about 1376x768), smaller than the 1920x1080 video. If the free
+# Real-ESRGAN upscaler is installed (README: "Sharper images"), each picture is upscaled 2x first.
+UPSCALER_BIN = env("UPSCALER_BIN") or str(ROOT / "tools" / "realesrgan" / "realesrgan-ncnn-vulkan")
+UPSCALE_MODEL = env("UPSCALE_MODEL", "realesr-animevideov3")
 TARGET_WORDS = 2200
 WORDS_MIN, WORDS_MAX = 1800, 2500
 

@@ -8,3 +8,4 @@ __pycache__/
 out/
 .DS_Store
 assets/style-refs/candidates/
+tools/

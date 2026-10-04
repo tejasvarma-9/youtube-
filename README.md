@@ -28,6 +28,21 @@ brew install ffmpeg-full
 python -m pipeline run <video> --from assemble
 ```
 
+### Sharper images (free, optional)
+
+The image model only makes 1K pictures, smaller than the 1920x1080 video, so frames look a little soft on a laptop. Real-ESRGAN, a free upscaler (BSD license) that suits flat 2D drawings, doubles each picture on your Mac before the video is built. Install it once, from the `who-pays-who` folder:
+
+```bash
+mkdir -p tools/realesrgan
+curl -L -o tools/realesrgan.zip https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesrgan-ncnn-vulkan-20220424-macos.zip
+unzip -o tools/realesrgan.zip -d tools/realesrgan && rm tools/realesrgan.zip
+chmod +x tools/realesrgan/realesrgan-ncnn-vulkan
+xattr -dr com.apple.quarantine tools/realesrgan
+python -m pipeline doctor
+```
+
+`doctor` stops showing the upscaler note once it's found. The assembly then upscales each new picture (cached in `images/upscaled/`, a few minutes per video). If the upscaler ever fails, the video is still made from the original pictures and the log says so.
+
 ## 2. The Google key (do this once, never paste it in chat)
 
 One key covers images and the voiceover.

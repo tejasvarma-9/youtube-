@@ -16,6 +16,7 @@ import os
 import re
 import shutil
 import subprocess
+from pathlib import Path
 
 from . import config
 from .common import StageError, Video, fmt_ts, log, run as sh
@@ -62,6 +63,58 @@ def find_ffmpeg() -> tuple[str, bool]:
                     return c, True
                 usable.append(c)
     return (usable[0], False) if usable else ("", False)
+
+
+@functools.lru_cache(maxsize=None)
+def find_upscaler() -> str:
+    """The Real-ESRGAN binary, or "" if it isn't installed (pictures are then only resized)."""
+    for c in (config.UPSCALER_BIN, shutil.which("realesrgan-ncnn-vulkan") or ""):
+        if c and os.path.isfile(c) and os.access(c, os.X_OK):
+            return c
+    return ""
+
+
+_upscale_failed = []
+
+
+def upscale(img: Path) -> Path:
+    """A 2x AI-upscaled copy of a picture smaller than the video, cached next to it.
+
+    Falls back to the original picture (resized while cutting frames, as before) if the upscaler
+    is missing or fails, so a broken upscaler never stops a video.
+    """
+    from PIL import Image
+
+    binary = find_upscaler()
+    if not binary or _upscale_failed:
+        return img
+    with Image.open(img) as im:
+        if im.width >= config.WIDTH * 1.25:
+            return img
+    st = img.stat()
+    key = hashlib.sha1(f"{config.UPSCALE_MODEL}|{st.st_size}|{st.st_mtime_ns}".encode()).hexdigest()[:10]
+    out = img.parent / "upscaled" / f"{img.stem}_{key}.png"
+    if out.exists():
+        return out
+    out.parent.mkdir(exist_ok=True)
+    for old in out.parent.glob(f"{img.stem}_*.png"):
+        old.unlink()
+    cmd = [binary, "-i", str(img), "-o", str(out), "-n", config.UPSCALE_MODEL, "-s", "2",
+           "-m", str(Path(binary).parent / "models")]
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        ok = res.returncode == 0 and out.exists() and out.stat().st_size > 0
+        detail = (res.stderr or res.stdout)[-600:]
+    except (OSError, subprocess.TimeoutExpired) as e:
+        ok, detail = False, str(e)
+    if not ok:
+        if out.exists():
+            out.unlink()
+        _upscale_failed.append(detail)
+        log("  WARNING: the image upscaler failed, so pictures are only resized this run. After fixing it,\n"
+            f"           delete the clips folder and re-run the assembly.\n{detail}")
+        return img
+    return out
 
 
 def build_clip(img, out, frames: int, motion: int) -> None:
@@ -144,13 +197,14 @@ def run(video: Video, stub: bool = False, captions: bool = True) -> None:
     tl = video.read_json("timeline.json")
     shots = video.read_json("shots.json")["shots"]
     clips, todo = [], []
+    sharp = f"up:{config.UPSCALE_MODEL}" if find_upscaler() else "plain"
     for idx, s in enumerate(shots):
         img = video.dir / "images" / f"shot_{s['id']:03d}.png"
         if not img.exists():
             raise StageError(f"Image for shot {s['id']} is missing. Run: python -m pipeline images {video.slug}")
         f0, f1 = round(s["start"] * config.FPS), round(s["end"] * config.FPS)
         frames = max(f1 - f0, 1)
-        key = hashlib.sha1(f"{CLIP_VERSION}|{img.stat().st_size}|{img.stat().st_mtime_ns}|{frames}|{idx % len(MOTIONS)}".encode()).hexdigest()[:10]
+        key = hashlib.sha1(f"{CLIP_VERSION}|{sharp}|{img.stat().st_size}|{img.stat().st_mtime_ns}|{frames}|{idx % len(MOTIONS)}".encode()).hexdigest()[:10]
         clip = video.path("clips", f"shot_{s['id']:03d}_{key}.mp4")
         if not clip.exists():
             for old in clip.parent.glob(f"shot_{s['id']:03d}_*.mp4"):
@@ -158,7 +212,11 @@ def run(video: Video, stub: bool = False, captions: bool = True) -> None:
             todo.append((img, clip, frames, idx))
         clips.append(clip)
 
-    # Several clips at once: each is mostly picture resizing plus its own ffmpeg process.
+    # Upscale one picture at a time (it uses the graphics chip), then build several clips at once:
+    # each is mostly picture resizing plus its own ffmpeg process.
+    if todo and sharp != "plain":
+        log(f"    upscaling {len(todo)} pictures for a sharper video")
+        todo = [(upscale(img), clip, frames, idx) for img, clip, frames, idx in todo]
     if todo:
         log(f"    building {len(todo)} clips ({len(clips) - len(todo)} already made)")
     workers = max(1, min(4, (os.cpu_count() or 2) - 1))
