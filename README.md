@@ -4,6 +4,26 @@ Turns a topic into a finished, fact-checked video for [@WhoPaysWhoOfficial](http
 
 Everything runs on your Mac. The channel's voice, structure and visual rules live in [voice.md](voice.md).
 
+## Every new video, in order
+
+Open Terminal, then (replace `<slug>` with the name the pipeline prints, for example `how-costco-makes-money`):
+
+```bash
+cd ~/who-pays-who
+source .venv/bin/activate
+git pull
+pip install -r requirements.txt
+python -m pipeline doctor
+python -m pipeline new "How <business> makes money" --angle "<one insight the numbers support>"
+python -m pipeline run <slug>
+open out/<slug>/review/REVIEW.md
+python -m pipeline approve <slug>
+```
+
+- If `run` stops at the fact-check: `python -m pipeline revise <slug>`, then `python -m pipeline run <slug>` (section 5).
+- If it stops for a quota or login problem, re-run the same `run` command later; finished stages are skipped.
+- Then upload by hand in YouTube Studio: `video.mp4`, `thumbnail.png`, the title and `description.txt` from `metadata.json`. Save as Private, check it on your phone, then make it Public.
+
 ## 1. One-time setup
 
 ```bash
@@ -118,7 +138,9 @@ To make your own edits through the writer (or apply someone's review), put the n
 
 ```bash
 python -m pipeline revise how-costco-makes-money --notes my-notes.txt
-``` If it still fails, run `revise` once more, or fix `script.txt` and `facts.txt` yourself and run `python -m pipeline factcheck how-costco-makes-money`.
+```
+
+If it still fails, run `revise` once more, or fix `script.txt` and `facts.txt` yourself and run `python -m pipeline factcheck how-costco-makes-money`.
 
 To change one image, edit its `scene` in `shots.json`, delete `images/shot_NNN.png`, then:
 
