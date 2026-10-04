@@ -117,6 +117,11 @@ def _batch_results(op: dict, keys: list[str]) -> dict[str, dict]:
     return out
 
 
+def _prompt(shot: dict) -> str:
+    """Built from the scene at request time, so an edited scene in shots.json is what gets drawn."""
+    return f"{shot['scene']}\n\n{config.IMAGE_STYLE_SUFFIX}"
+
+
 def run(video: Video, stub: bool = False, sync: bool = False) -> None:
     shots = video.read_json("shots.json")["shots"]
     out_dir = video.path("images", ".keep").parent
@@ -140,7 +145,7 @@ def run(video: Video, stub: bool = False, sync: bool = False) -> None:
     if sync:
         failed = []
         for n, s in enumerate(todo, 1):
-            img = generate_sync(build_request(s["prompt"], ref_parts))
+            img = generate_sync(build_request(_prompt(s), ref_parts))
             if img:
                 (out_dir / f"shot_{s['id']:03d}.png").write_bytes(img)
             else:
@@ -155,7 +160,7 @@ def run(video: Video, stub: bool = False, sync: bool = False) -> None:
     fresh = [s for s in todo if f"shot_{s['id']:03d}" not in pending_keys]
     for i in range(0, len(fresh), config.IMAGE_BATCH_SIZE):
         chunk = fresh[i:i + config.IMAGE_BATCH_SIZE]
-        keyed = [(f"shot_{s['id']:03d}", build_request(s["prompt"], ref_parts)) for s in chunk]
+        keyed = [(f"shot_{s['id']:03d}", build_request(_prompt(s), ref_parts)) for s in chunk]
         name = _submit_batch(f"{video.slug}-{i // config.IMAGE_BATCH_SIZE + 1}", keyed)
         state["batches"].append({"name": name, "keys": [k for k, _ in keyed]})
         state_file.write_text(json.dumps(state, indent=2))
