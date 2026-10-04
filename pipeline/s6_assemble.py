@@ -9,25 +9,26 @@ Writes clips/*.mp4, captions.srt and video.mp4.
 
 from __future__ import annotations
 
+import concurrent.futures
 import functools
 import hashlib
 import os
 import re
 import shutil
+import subprocess
 
 from . import config
 from .common import StageError, Video, fmt_ts, log, run as sh
 
+# Slow camera moves, each (zoom, x, y) at progress t from 0 to 1. zoom >= 1 is how far in; x and y are
+# where the window sits in the room the zoom leaves (0 left/top, 1 right/bottom).
 MOTIONS = [
-    # zoom in, centered
-    ("1+0.10*on/{n}", "(iw-iw/zoom)/2", "(ih-ih/zoom)/2"),
-    # pan left to right
-    ("1.10", "(iw-iw/zoom)*on/{n}", "(ih-ih/zoom)/2"),
-    # zoom out, centered
-    ("1.10-0.10*on/{n}", "(iw-iw/zoom)/2", "(ih-ih/zoom)/2"),
-    # pan right to left
-    ("1.10", "(iw-iw/zoom)*(1-on/{n})", "(ih-ih/zoom)/2"),
+    lambda t: (1 + 0.10 * t, 0.5, 0.5),        # zoom in, centered
+    lambda t: (1.10, t, 0.5),                  # pan left to right
+    lambda t: (1.10 - 0.10 * t, 0.5, 0.5),     # zoom out, centered
+    lambda t: (1.10, 1 - t, 0.5),              # pan right to left
 ]
+CLIP_VERSION = "smooth1"  # bump when build_clip changes, so cached clips are rebuilt
 CAPTION_STYLE = (
     "FontName=Arial,FontSize=15,Bold=1,PrimaryColour=&H00FFFFFF,OutlineColour=&H00101010,"
     "BorderStyle=1,Outline=2.4,Shadow=0,Alignment=2,MarginV=28"
@@ -64,14 +65,40 @@ def find_ffmpeg() -> tuple[str, bool]:
 
 
 def build_clip(img, out, frames: int, motion: int) -> None:
-    z, x, y = (part.format(n=max(frames - 1, 1)) for part in MOTIONS[motion % len(MOTIONS)])
-    vf = (
-        "scale=2880:1620:force_original_aspect_ratio=increase,crop=2880:1620,setsar=1,"
-        f"zoompan=z='{z}':x='{x}':y='{y}':d={frames}:s={config.WIDTH}x{config.HEIGHT}:fps={config.FPS},"
-        "format=yuv420p"
-    )
-    sh([find_ffmpeg()[0], "-y", "-v", "error", "-i", str(img), "-vf", vf, "-frames:v", str(frames),
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-r", str(config.FPS), str(out)])
+    """One shot as a slowly moving clip.
+
+    Each frame is cut from the picture at a fractional position and resized once, so the move is
+    perfectly smooth. (ffmpeg's zoompan snaps the window to whole pixels, which showed as shaking.)
+    """
+    from PIL import Image
+
+    W, H = config.WIDTH, config.HEIGHT
+    src = Image.open(img).convert("RGB")
+    sw, sh_ = src.size
+    # Fill a 16:9 window from the middle of the picture.
+    bw, bh = (sh_ * W / H, sh_) if sw / sh_ > W / H else (sw, sw * H / W)
+    bx, by = (sw - bw) / 2, (sh_ - bh) / 2
+    move = MOTIONS[motion % len(MOTIONS)]
+    cmd = [find_ffmpeg()[0], "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}",
+           "-r", str(config.FPS), "-i", "-", "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+           "-pix_fmt", "yuv420p", str(out)]
+    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        for k in range(frames):
+            zoom, px, py = move(k / max(frames - 1, 1))
+            cw, ch = bw / zoom, bh / zoom
+            x0, y0 = bx + (bw - cw) * px, by + (bh - ch) * py
+            frame = src.resize((W, H), Image.BICUBIC, box=(x0, y0, x0 + cw, y0 + ch))
+            proc.stdin.write(frame.tobytes())
+        proc.stdin.close()
+        err = proc.stderr.read().decode(errors="replace")
+        if proc.wait() != 0:
+            raise StageError(f"ffmpeg failed building a clip:\n{err[-1500:]}")
+    except BrokenPipeError:
+        raise StageError(f"ffmpeg stopped while building a clip:\n{proc.stderr.read().decode(errors='replace')[-1500:]}")
+    finally:
+        if proc.poll() is None:
+            proc.kill()
 
 
 def caption_chunks(text: str, max_chars: int = 38) -> list[str]:
@@ -116,22 +143,31 @@ def run(video: Video, stub: bool = False, captions: bool = True) -> None:
         captions = False
     tl = video.read_json("timeline.json")
     shots = video.read_json("shots.json")["shots"]
-    clips = []
+    clips, todo = [], []
     for idx, s in enumerate(shots):
         img = video.dir / "images" / f"shot_{s['id']:03d}.png"
         if not img.exists():
             raise StageError(f"Image for shot {s['id']} is missing. Run: python -m pipeline images {video.slug}")
         f0, f1 = round(s["start"] * config.FPS), round(s["end"] * config.FPS)
         frames = max(f1 - f0, 1)
-        key = hashlib.sha1(f"{img.stat().st_size}|{img.stat().st_mtime_ns}|{frames}|{idx % len(MOTIONS)}".encode()).hexdigest()[:10]
+        key = hashlib.sha1(f"{CLIP_VERSION}|{img.stat().st_size}|{img.stat().st_mtime_ns}|{frames}|{idx % len(MOTIONS)}".encode()).hexdigest()[:10]
         clip = video.path("clips", f"shot_{s['id']:03d}_{key}.mp4")
         if not clip.exists():
             for old in clip.parent.glob(f"shot_{s['id']:03d}_*.mp4"):
                 old.unlink()
-            build_clip(img, clip, frames, idx)
+            todo.append((img, clip, frames, idx))
         clips.append(clip)
-        if (idx + 1) % 10 == 0 or idx + 1 == len(shots):
-            log(f"    clips {idx + 1}/{len(shots)}")
+
+    # Several clips at once: each is mostly picture resizing plus its own ffmpeg process.
+    if todo:
+        log(f"    building {len(todo)} clips ({len(clips) - len(todo)} already made)")
+    workers = max(1, min(4, (os.cpu_count() or 2) - 1))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = [pool.submit(build_clip, *job) for job in todo]
+        for n, fut in enumerate(concurrent.futures.as_completed(futures), start=1):
+            fut.result()
+            if n % 10 == 0 or n == len(todo):
+                log(f"    clips {n}/{len(todo)}")
 
     concat = video.path("clips", "list.txt")
     concat.write_text("".join(f"file '{c.name}'\n" for c in clips))
