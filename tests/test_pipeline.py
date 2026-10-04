@@ -371,6 +371,10 @@ class StubEndToEnd(unittest.TestCase):
             f.write(b"0")
         self.assertEqual(cli.main(["approve", self.slug, "--force"]), 1)
 
+    def test_placeholder_topics_are_refused(self):
+        self.assertEqual(cli.main(["--stub", "auto", "How X makes money", "--angle", "...", "--slug", self.slug]), 1)
+        self.assertFalse((config.OUT / self.slug).exists())
+
     def test_auto_revises_a_failed_factcheck(self):
         from pipeline import s2_factcheck
         self.assertEqual(cli.main(["--stub", "new", "How vending machines make money", "--slug", self.slug]), 0)

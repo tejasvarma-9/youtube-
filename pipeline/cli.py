@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
 import sys
 
@@ -64,7 +65,15 @@ def run_stage(stage: str, v: Video, a) -> None:
         s9_review.run(v, stub=a.stub)
 
 
+# The README examples, pasted unchanged. ("X" alone is allowed: X Corp is a real company.)
+PLACEHOLDER = re.compile(r"<[^>]*>|^\s*\.\.\.\s*$|^how x makes money$", re.I)
+
+
 def cmd_new(a) -> Video:
+    for label, value in (("topic", a.topic), ("angle", a.angle or "")):
+        if PLACEHOLDER.search(value):
+            raise StageError(f"The {label} \"{value}\" is the README's placeholder. "
+                             "Put the real business and insight in its place.")
     slug = a.slug or slugify(a.topic)
     d = config.OUT / slug
     if (d / "brief.json").exists():

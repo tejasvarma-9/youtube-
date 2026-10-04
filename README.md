@@ -37,6 +37,8 @@ This is the producer. It writes the script, fact-checks it and fixes what the fa
 - Fact-check still failing after 3 rounds: read `out/<slug>/factcheck.md`, then `python -m pipeline revise <slug> --notes my-notes.txt`, then run the same `auto` command again.
 - Voice quota used up, or a Claude login error: run the same `auto` command again later, or run `claude` and then `/login` first. Finished steps are skipped, nothing is lost.
 
+Replace everything in `<...>` and the quotes with a real business and a real insight. The command refuses the README's own placeholders ("How X makes money", "...").
+
 The step-by-step commands (`new`, then `run <slug>`) still work if you prefer them.
 
 **Step 4. Read the quality check, then watch it**
