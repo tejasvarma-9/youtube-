@@ -6,7 +6,9 @@ Everything runs on your Mac. The channel's voice, structure and visual rules liv
 
 ## Every new video, in order
 
-Open Terminal, then (replace `<slug>` with the name the pipeline prints, for example `how-costco-makes-money`):
+Do these steps in this order. Paste one line at a time in Terminal. Replace `<slug>` with the name the pipeline prints (for example `how-costco-makes-money`).
+
+**Step 1. Get ready (2 minutes)**
 
 ```bash
 cd ~/who-pays-who
@@ -14,15 +16,46 @@ source .venv/bin/activate
 git pull
 pip install -r requirements.txt
 python -m pipeline doctor
-python -m pipeline new "How <business> makes money" --angle "<one insight the numbers support>"
+```
+
+`doctor` should end with "Everything is set up." A line starting with `!` is a note, not a problem. A line starting with `✗` must be fixed first.
+
+**Step 2. Pick the business and one insight**
+
+The insight (`--angle`) is the one idea that makes the video yours. It must be something the numbers show. "Fees are about half of operating profit" is fine. "The card is the profit" is not, because it overstates. Claims in the angle, the title and the thumbnail text must all be safe to say out loud.
+
+**Step 3. Make the video (about 30 to 60 minutes, mostly waiting)**
+
+```bash
+python -m pipeline new "How <business> makes money" --angle "<your insight>"
 python -m pipeline run <slug>
+```
+
+The pipeline prints the slug. If `run` stops, read the line that starts with `STOPPED:`:
+
+- Fact-check failed: `python -m pipeline revise <slug>`, then `python -m pipeline run <slug>` again. Repeat up to a few times.
+- Voice quota used up, or a Claude login error: run the same `run` command again later, or run `claude` and then `/login`. Finished steps are skipped, nothing is lost.
+
+**Step 4. Watch it and check these things**
+
+```bash
 open out/<slug>/review/REVIEW.md
+open out/<slug>/video.mp4
+```
+
+- Does the script open with the hook, then "This is Who Pays Who..." and end with one like-and-subscribe line? (The rule check enforces this.)
+- Do the captions match the voice? Do the pictures look sharp?
+- Does the thumbnail text claim only what the numbers show? To change it, edit `"thumbnail_text"` in `out/<slug>/metadata.json`, then run `python -m pipeline thumbnail <slug>`.
+
+**Step 5. Approve**
+
+```bash
 python -m pipeline approve <slug>
 ```
 
-- If `run` stops at the fact-check: `python -m pipeline revise <slug>`, then `python -m pipeline run <slug>` (section 5).
-- If it stops for a quota or login problem, re-run the same `run` command later; finished stages are skipped.
-- Then upload by hand in YouTube Studio: `video.mp4`, `thumbnail.png`, the title and `description.txt` from `metadata.json`. Save as Private, check it on your phone, then make it Public.
+**Step 6. Upload by hand in YouTube Studio**
+
+The upload steps are in the section "Upload to YouTube, step by step" below. Always save as Private first, check it on your phone, then make it Public.
 
 ## 1. One-time setup
 
@@ -160,6 +193,38 @@ Approving records a fingerprint of the exact video, thumbnail and description yo
 ```bash
 python -m pipeline status
 ```
+
+## Upload to YouTube, step by step
+
+The pipeline does not upload for you. Videos uploaded through YouTube's API from an unverified project are locked private permanently and cannot be appealed, so upload by hand until the project passes YouTube's API audit.
+
+**Once only:** verify the channel's phone number at https://www.youtube.com/verify. Without it, custom thumbnails and links in descriptions are locked.
+
+For each video:
+
+1. In Terminal: `open out/<slug>`. You need `video.mp4`, `thumbnail.png`, `description.txt` and `metadata.json`.
+2. Open https://studio.youtube.com, signed in as Who Pays Who. Click **Create**, then **Upload videos**, and drag in `video.mp4`.
+3. **Title:** copy the `"title"` line from `metadata.json` (open it with TextEdit). Use a plain apostrophe.
+4. **Description:** paste all of `description.txt`. It already has the intro, chapters and sources.
+5. **Thumbnail:** click **Upload file** and pick `thumbnail.png`. Check that it shows the new text, not an old one.
+6. **Audience:** choose "No, it's not made for kids".
+7. Click **Show more**, set the category to **Education**. Do not upload `captions.srt` (the captions are already in the video).
+8. **Altered content:** choose **No**. The narrator is a synthetic voice but doesn't pretend to be a real person, and the pictures are illustrations. If a scene ever looks like realistic footage of a real person or event, choose Yes.
+9. Click **Next** through Video elements (skip subtitles, end screen and cards for now) and Checks.
+10. **Visibility:** choose **Private** and click **Save**.
+11. Watch it on your phone in the YouTube app: the sound, the captions, the chapters on the timeline and the thumbnail.
+12. In Studio, open **Content**, click the Private lock on that row, choose **Public** (or **Schedule**), and save.
+13. Open the video link in a private browser window to confirm it plays when signed out.
+
+To replace a video that is already public, delete it in Studio and upload the new file. The old link stops working, so upload the new one as Private first and make it Public after checking.
+
+## Rules to remember
+
+- **Script shape:** hook first, then a two-sentence channel intro ("This is Who Pays Who..."), the video, and one like-and-subscribe sentence naming the channel as the last line. Never ask for the subscribe in the middle.
+- **Claims:** no figure without a source or an "estimate" tag. The title, thumbnail text and angle must not claim more than the numbers show. The fact-check covers the script only, so check the thumbnail text yourself.
+- **Never** paste an API key into chat. Keys live only in `.env` on your Mac.
+- **Approve** only after you have watched the exact video. If you change any file after approving, approve again.
+- **Costs:** about $1 per video for voice and images. Script, fact-check, shot list and metadata use your Claude plan and cost nothing extra.
 
 ## What each stage does
 
