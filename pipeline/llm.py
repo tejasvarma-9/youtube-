@@ -39,5 +39,8 @@ def ask(prompt_text: str, kind: str, *, web: bool = False, stub: bool = False, c
     except subprocess.TimeoutExpired as e:
         raise StageError(f"Claude took longer than {config.CLAUDE_TIMEOUT_S}s on the {kind} step.") from e
     if res.returncode != 0:
-        raise StageError(f"Claude failed on the {kind} step:\n{res.stderr[-2000:]}")
+        # Some failures (a usage limit, a login problem) are printed on stdout with nothing on stderr.
+        detail = (res.stderr.strip() or res.stdout.strip() or "(no message)")[-2000:]
+        raise StageError(f"Claude failed on the {kind} step (exit code {res.returncode}):\n{detail}\n"
+                         f"To see Claude's own message, run: claude -p \"say hi\"")
     return res.stdout
