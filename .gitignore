@@ -9,3 +9,6 @@ out/
 .DS_Store
 assets/style-refs/candidates/
 tools/
+
+# Graphify code map, rebuilt each session by .claude/hooks/graphify-session-start.sh
+graphify-out/
