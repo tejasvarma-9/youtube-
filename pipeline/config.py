@@ -41,7 +41,8 @@ CLAUDE_TIMEOUT_S = int(env("CLAUDE_TIMEOUT_S", "1800"))
 TTS_PROVIDER = env("TTS_PROVIDER", "gemini").lower()
 GEMINI_TTS_MODEL = env("GEMINI_TTS_MODEL", "gemini-3.8-flash-lite-tts")
 GEMINI_TTS_VOICE = env("GEMINI_TTS_VOICE", "Charon")
-GEMINI_TTS_STYLE = env("GEMINI_TTS_STYLE", "Say in a calm, confident, slightly wry documentary narrator voice at a steady pace")
+GEMINI_TTS_STYLE = env("GEMINI_TTS_STYLE", "Say like a friendly, upbeat YouTube explainer who finds this story fascinating: lively, "
+                       "expressive, with real excitement on the surprising parts, and a quick, natural pace")
 GEMINI_TTS_CHUNK_CHARS = int(env("GEMINI_TTS_CHUNK_CHARS", "1500"))  # text per voice request; Google caps requests per day
 GEMINI_TTS_MIN_INTERVAL_S = float(env("GEMINI_TTS_MIN_INTERVAL_S", "0"))  # raise if you keep hitting rate limits
 TTS_VOICE = env("TTS_VOICE", "en-US-Chirp3-HD-Charon")  # chirp only

@@ -345,7 +345,7 @@ SAMPLE_VOICES = ["Charon", "Orus", "Iapetus", "Algieba", "Kore"]
 # Ways to ask for the delivery, to compare by ear with `voice-test --styles`. Paste the winner's text
 # after GEMINI_TTS_STYLE= in .env.
 STYLE_PRESETS = {
-    "current": None,
+    "current": None,  # whatever GEMINI_TTS_STYLE is set to (the default is the "energetic" wording below)
     "engaged": "Say in an engaged, curious documentary narrator voice, warm and conversational, with natural "
                "emphasis on the key numbers, at a brisk pace",
     "energetic": "Say like a friendly, upbeat YouTube explainer who finds this story fascinating: lively, "

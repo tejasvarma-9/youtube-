@@ -162,7 +162,7 @@ Play the five samples. Put the winner in `.env` as `GEMINI_TTS_VOICE=Orus` (or w
 
 ### More lively delivery (optional)
 
-The default delivery asks for "a calm, confident ... voice at a steady pace", which sounds slow and flat. To compare delivery styles in your chosen voice (about 3 cents):
+The first video used "a calm, confident ... voice at a steady pace", which sounded slow and flat. The default is now the upbeat, quick "energetic" style. To compare other styles in your chosen voice (about 3 cents):
 
 ```bash
 python -m pipeline style-test
