@@ -1,4 +1,4 @@
-# Uploader plan (not built yet)
+# Uploader plan (not built yet: blocked on YouTube's API audit)
 
 The last stage: upload an approved video to YouTube as **private**, with a scheduled publish time. It is built only after a few videos have gone through the review package by hand.
 
@@ -18,7 +18,7 @@ The last stage: upload an approved video to YouTube as **private**, with a sched
 
 ## Limits to know
 
-- **Unverified projects upload as private only.** Until the Google Cloud project passes YouTube's API audit, every upload is locked to private, and `publishAt` can't take it public. That fits the approval step. Tejas publishes by hand in Studio until the audit is done. Apply for the audit once the channel is posting steadily.
+- **Blocker: unverified projects can't publish at all.** Google's docs: "All videos uploaded via the videos.insert endpoint from unverified API projects created after 28 July 2020 will be restricted to private viewing mode" (https://developers.google.com/youtube/v3/docs/videos/insert). YouTube's help page says these videos are *locked* private, the lock can't be appealed, and the fix is to re-upload through the website or a verified service (https://support.google.com/youtube/answer/7300965). So until the project passes YouTube's API audit, the uploader can only make videos nobody can ever see. Checked 2026-10-04. Don't build it before the audit is approved; upload by hand in Studio until then.
 - **Quota:** 10,000 units a day by default. An upload costs about 1,600 units, plus 50 for the thumbnail and 400 for the captions track, so about 4 videos a day. That's plenty for 3 to 7 a week.
 - Thumbnails need a verified channel (phone verification in Studio). Without it, `thumbnails.set` fails.
 - Captions go up as a track from `captions.srt`, even though they are also burned in, so YouTube can index the text.
