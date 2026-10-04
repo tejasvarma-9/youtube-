@@ -236,10 +236,10 @@ def _retry_delay(res) -> float:
     return float(m.group(1)) if m else 0.0
 
 
-def _gemini(text: str, voice: str | None = None) -> bytes:
+def _gemini(text: str, voice: str | None = None, style: str | None = None) -> bytes:
     """One sentence through the Gemini API's voice model; returns raw 24 kHz 16-bit mono PCM."""
     body = {
-        "contents": [{"parts": [{"text": f"{config.GEMINI_TTS_STYLE}: {text}"}]}],
+        "contents": [{"parts": [{"text": f"{style or config.GEMINI_TTS_STYLE}: {text}"}]}],
         "generationConfig": {
             "responseModalities": ["AUDIO"],
             "speechConfig": {"voiceConfig": {"prebuiltVoiceConfig": {"voiceName": voice or config.GEMINI_TTS_VOICE}}},
@@ -340,6 +340,34 @@ SAMPLE_TEXT = (
     "sales. So, who pays whom?"
 )
 SAMPLE_VOICES = ["Charon", "Orus", "Iapetus", "Algieba", "Kore"]
+
+
+# Ways to ask for the delivery, to compare by ear with `voice-test --styles`. Paste the winner's text
+# after GEMINI_TTS_STYLE= in .env.
+STYLE_PRESETS = {
+    "current": None,
+    "engaged": "Say in an engaged, curious documentary narrator voice, warm and conversational, with natural "
+               "emphasis on the key numbers, at a brisk pace",
+    "energetic": "Say like a friendly, upbeat YouTube explainer who finds this story fascinating: lively, "
+                 "expressive, with real excitement on the surprising parts, and a quick, natural pace",
+}
+
+
+def style_test(stub: bool = False) -> list:
+    """The same paragraph in three delivery styles, in your chosen voice (about 3 cents in total)."""
+    if config.TTS_PROVIDER != "gemini":
+        raise StageError("style-test only covers the Gemini voices. Set TTS_PROVIDER=gemini (the default).")
+    if not stub and not config.GOOGLE_API_KEY:
+        raise StageError("GOOGLE_API_KEY is empty. Put it in the .env file (see README).")
+    out = config.OUT / "voice-samples"
+    out.mkdir(parents=True, exist_ok=True)
+    made = []
+    for name, style in STYLE_PRESETS.items():
+        path = out / f"style-{name}.wav"
+        _write_wav(path, _stub_pcm(SAMPLE_TEXT) if stub else _gemini(SAMPLE_TEXT, style=style))
+        log(f"  {name}: {path.relative_to(config.ROOT)}")
+        made.append(path)
+    return made
 
 
 def voice_test(voices: list[str] | None = None, stub: bool = False) -> list:

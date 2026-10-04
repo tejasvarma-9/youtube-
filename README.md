@@ -160,6 +160,17 @@ open out/voice-samples
 
 Play the five samples. Put the winner in `.env` as `GEMINI_TTS_VOICE=Orus` (or whichever you chose). This costs about a cent. Listen for numbers read correctly: "$1,500 to $3,000" and "10% to 20%".
 
+### More lively delivery (optional)
+
+The default delivery asks for "a calm, confident ... voice at a steady pace", which sounds slow and flat. To compare delivery styles in your chosen voice (about 3 cents):
+
+```bash
+python -m pipeline style-test
+open out/voice-samples
+```
+
+Play `style-current`, `style-engaged` and `style-energetic`. To use one, copy its wording from `STYLE_PRESETS` in `pipeline/s3_voiceover.py` after `GEMINI_TTS_STYLE=` in `.env`. Existing videos keep their old audio; new videos use the new style.
+
 ## 5. Make a video
 
 ```bash

@@ -229,6 +229,7 @@ def main(argv=None) -> int:
     sub.add_parser("doctor", help="check that this Mac is set up")
     vt = sub.add_parser("voice-test", help="a short sample in several voices to choose from (about 1 cent)")
     vt.add_argument("--voices", help="comma-separated Gemini voice names, e.g. Charon,Orus")
+    sub.add_parser("style-test", help="the same paragraph in three delivery styles, in your voice (about 3 cents)")
     sub.add_parser("style-frames", help="generate 4 style frame candidates to pick from (about $0.14)")
 
     for sp in list(sub.choices.values()):
@@ -269,6 +270,10 @@ def main(argv=None) -> int:
             s3_voiceover.voice_test(voices, stub=a.stub)
             log(f"Listen with: open {config.OUT / 'voice-samples'}")
             log("Pick one, then put GEMINI_TTS_VOICE=<name> in .env.")
+        elif a.cmd == "style-test":
+            s3_voiceover.style_test(stub=a.stub)
+            log(f"Listen with: open {config.OUT / 'voice-samples'}")
+            log("Pick one, then put its wording after GEMINI_TTS_STYLE= in .env (see README).")
         elif a.cmd == "style-frames":
             made = s5_images.make_style_candidates()
             log(f"Wrote {len(made)} candidates to assets/style-refs/candidates/. Move the 2 or 3 you like into assets/style-refs/.")
