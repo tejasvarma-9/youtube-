@@ -486,6 +486,26 @@ class StubEndToEnd(unittest.TestCase):
         self.assertIn("audited before", seen[0])
         self.assertIn("Rob", seen[0].split("SCOPE:")[1].split("<script>")[0])
 
+        # A failed first check in between does not throw away what the audit already settled.
+        fc = json.loads((d / "factcheck.json").read_text())
+        script = (d / "script.txt").read_text()
+        (d / "script.txt").write_text(script.replace("Rob", "Bob", 1))
+
+        def failing(prompt_text, kind, **kw):
+            if kind == "factcheck":
+                return "===JSON===\n" + json.dumps({"facts": [{"id": "NEW1", "verdict": "UNSUPPORTED", "claim": "x", "note": "", "fix": ""}], "policy": []}) + "\n===END==="
+            return capture(prompt_text, kind, **kw)
+
+        seen.clear()
+        with mock.patch.object(llm, "ask", failing):
+            self.assertEqual(cli.main(["--stub", "factcheck", self.slug]), 1)
+        self.assertEqual(seen, [])
+        self.assertTrue(json.loads((d / "factcheck.json").read_text())["audit"]["clean"])
+        with mock.patch.object(llm, "ask", capture):
+            self.assertEqual(cli.main(["--stub", "factcheck", self.slug]), 0)
+        self.assertEqual(len(seen), 1)
+        self.assertIn("audited before", seen[0])
+
     def test_revise_after_failed_factcheck(self):
         from pipeline import llm, s2_factcheck
         self.assertEqual(cli.main(["--stub", "new", "How vending machines make money", "--slug", self.slug]), 0)

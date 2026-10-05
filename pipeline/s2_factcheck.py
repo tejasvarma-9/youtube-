@@ -71,8 +71,10 @@ def run(video: Video, stub: bool = False, full: bool = False) -> None:
         if not audit or audit.get("sha") != _h(script) or audit.get("problems"):
             audit = _audit(video, script, stub, prev=audit)
         passed = not audit["problems"]
-    else:
-        audit = None
+    elif audit:
+        # Not audited this time (the first check failed), but remember which sentences were already
+        # settled so the next audit only reads what changed. No sha: the next clean run must audit.
+        audit = {"sha": None, "clean": audit.get("clean", []), "checks": [], "problems": []}
 
     result.update({"passed": passed, "unchecked": unchecked, "lint_errors": lint["errors"], "audit": audit})
     result.update(_settled(result, fact_lines, urls, sentences))
@@ -273,7 +275,7 @@ def _write_report(video: Video, result: dict, fact_lines: dict) -> None:
     if result["lint_errors"]:
         lines += ["## Rule errors", ""] + [f"- {e}" for e in result["lint_errors"]] + [""]
     audit = result.get("audit")
-    if audit:
+    if audit and audit.get("checks"):
         bad = audit.get("problems", [])
         lines += ["## Independent audit", "", f"{len(audit.get('checks', []))} items looked at, {len(bad)} problems.", ""]
         for c in audit.get("checks", []):
