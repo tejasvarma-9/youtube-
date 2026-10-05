@@ -385,6 +385,12 @@ class StubEndToEnd(unittest.TestCase):
         self.assertEqual(m["thumbnail_text"], "MY OWN TEXT")
         self.assertTrue((d / "description.txt").read_text().startswith("My own opening."))
 
+        # Rewording a sentence (same number of sentences) keeps them too.
+        script = (d / "script.txt").read_text()
+        (d / "script.txt").write_text(script.replace("vending", "snack", 1))
+        self.assertEqual(cli.main(["--stub", "metadata", self.slug]), 0)
+        self.assertEqual(json.loads((d / "metadata.json").read_text())["thumbnail_text"], "MY OWN TEXT")
+
     def test_auto_producer_and_quality_gate(self):
         code = cli.main(["--stub", "auto", "How vending machines make money", "--slug", self.slug])
         self.assertEqual(code, 0)

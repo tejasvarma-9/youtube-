@@ -18,11 +18,16 @@ def run(video: Video, stub: bool = False) -> None:
     timed = "\n".join(f"[{s['i']}] ({fmt_ts(s['start'])}) {s['text']}" for s in sents)
     script_sha = hashlib.sha1(video.read_text("script.txt").encode()).hexdigest()[:12]
     old = video.read_json("metadata.json") if video.path("metadata.json").exists() else {}
-    if old.get("script_sha") == script_sha and old.get("chapter_sentences"):
-        # Same script: keep the title, thumbnail text and description (including your edits);
+    same_script = old.get("script_sha") == script_sha
+    same_shape = old.get("sentence_count") == len(sents)  # reworded sentences, same number of them
+    if old.get("chapter_sentences") and (same_script or same_shape):
+        # Keep the title, thumbnail text and description (including your edits);
         # only the chapter times are re-read from the new timeline.
         meta = old
-        log("  keeping the title, thumbnail text and description in metadata.json (script unchanged)")
+        meta["script_sha"] = script_sha
+        meta["sentence_count"] = len(sents)
+        log("  keeping the title, thumbnail text and description in metadata.json (script wording edited, same sentences)"
+            if not same_script else "  keeping the title, thumbnail text and description in metadata.json (script unchanged)")
     else:
         text = fill(prompt("metadata.md"), VOICE=voice_profile(), TIMED_SCRIPT=timed, SOURCES=video.read_text("sources.txt"))
         answer = llm.ask(text, "metadata", stub=stub, context={"sentence_count": len(sents)})
@@ -33,6 +38,7 @@ def run(video: Video, stub: bool = False) -> None:
                 raise StageError(f"Metadata is missing '{key}'. See raw/metadata_answer.md and re-run.")
         meta["chapter_sentences"] = [{"sentence": int(c["sentence"]), "title": c["title"].strip()} for c in meta["chapters"]]
         meta["script_sha"] = script_sha
+        meta["sentence_count"] = len(sents)
 
     by_index = {s["i"]: s for s in sents}
     chapters = []
