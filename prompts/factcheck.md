@@ -7,6 +7,8 @@ For every fact line below:
 
 4. Redo every calculation in the script yourself. Flag (as a NEW fact, UNSUPPORTED or WRONG) any calculation that is wrong, counts the same money twice, or mixes up definitions (for example treating a figure that is already net of a cost as if it weren't).
 
+5. Check the script as a whole, not only sentence by sentence. Flag (as a NEW fact, WRONG or UNSUPPORTED) any claim that contradicts another part of the script (for example a hook that says money went to X when the body shows it went to Y), any set of parts that is meant to add up to a total but does not within rounding (regions, cost lines, percentages), and any worked example that uses a different rounding of a figure than the rest of the script so its result is off by more than a rounding error.
+
 Verdicts:
 - SUPPORTED: the source says this.
 - ESTIMATE_OK: an estimate, plausible, and spoken as an estimate in the script.
