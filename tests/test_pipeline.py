@@ -470,6 +470,22 @@ class StubEndToEnd(unittest.TestCase):
             self.assertEqual(cli.main(["--stub", "factcheck", self.slug]), 0)
             self.assertNotIn("audit", calls)
 
+        # After an edit, only the changed sentence goes back to the auditor.
+        script = (d / "script.txt").read_text()
+        (d / "script.txt").write_text(script.replace("Bob", "Rob", 1))
+        seen = []
+
+        def capture(prompt_text, kind, **kw):
+            if kind == "audit":
+                seen.append(prompt_text)
+            return real(prompt_text, kind, **kw)
+
+        with mock.patch.object(llm, "ask", capture):
+            self.assertEqual(cli.main(["--stub", "factcheck", self.slug]), 0)
+        self.assertEqual(len(seen), 1)
+        self.assertIn("audited before", seen[0])
+        self.assertIn("Rob", seen[0].split("SCOPE:")[1].split("<script>")[0])
+
     def test_revise_after_failed_factcheck(self):
         from pipeline import llm, s2_factcheck
         self.assertEqual(cli.main(["--stub", "new", "How vending machines make money", "--slug", self.slug]), 0)

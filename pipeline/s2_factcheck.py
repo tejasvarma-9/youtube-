@@ -69,7 +69,7 @@ def run(video: Video, stub: bool = False, full: bool = False) -> None:
     audit = _previous(video).get("audit") if not full else None
     if passed:
         if not audit or audit.get("sha") != _h(script) or audit.get("problems"):
-            audit = _audit(video, script, stub)
+            audit = _audit(video, script, stub, prev=audit)
         passed = not audit["problems"]
     else:
         audit = None
@@ -92,15 +92,41 @@ def run(video: Video, stub: bool = False, full: bool = False) -> None:
         )
 
 
-def _audit(video: Video, script: str, stub: bool) -> dict:
-    """An independent reader that checks the script against the real sources without the writer's notes."""
-    log("  independent audit: re-checking the script against primary sources (no writer notes)...")
-    text = fill(prompt("audit.md"), TOPIC=video.brief()["topic"], SCRIPT=script)
+def _audit(video: Video, script: str, stub: bool, prev: dict | None = None) -> dict:
+    """An independent reader that checks the script against the real sources without the writer's notes.
+
+    After the first audit only the sentences that changed are looked at again (plus anything they
+    affect). A full re-read finds a different handful of nitpicks every time and would never settle.
+    """
+    sentences = [r["text"] for r in sentences_with_paragraphs(script)]
+    if prev and "clean" not in prev and prev.get("sha") == _h(script):
+        prev = {**prev, "clean": _settled_audit(prev.get("problems", []), sentences)}  # audit from before this field existed
+    clean = set((prev or {}).get("clean", []))
+    changed = [t for t in sentences if _h(t) not in clean]
+    if prev and clean and changed and len(changed) < len(sentences):
+        log(f"  independent audit: re-checking {len(changed)} of {len(sentences)} sentences that changed (no writer notes)...")
+        scope = ("This script was audited before and then revised. Check ONLY the claims in the sentences below, and "
+                 "any total, calculation or earlier claim they affect. Report nothing about any other sentence.\n"
+                 + "\n".join(f"- {t}" for t in changed))
+    else:
+        log("  independent audit: re-checking the script against primary sources (no writer notes)...")
+        scope = "Audit the whole script."
+    text = fill(prompt("audit.md"), TOPIC=video.brief()["topic"], SCRIPT=script, SCOPE=scope)
     answer = llm.ask(text, "audit", web=True, stub=stub)
     video.path("raw", "audit_answer.md").write_text(answer)
     checks = extract_json(answer).get("checks", [])
     problems = [c for c in checks if str(c.get("verdict", "")).upper() in AUDIT_BAD]
-    return {"sha": _h(script), "checks": checks, "problems": problems}
+    return {"sha": _h(script), "checks": checks, "problems": problems, "clean": _settled_audit(problems, sentences)}
+
+
+def _settled_audit(problems: list, sentences: list) -> list:
+    """Sentences containing nothing the audit flagged. If a flagged quote can't be placed in the script,
+    nothing counts as settled and the next audit reads the whole script."""
+    quotes = [" ".join(str(c.get("quote", "")).split()) for c in problems]
+    norm = [" ".join(t.split()) for t in sentences]
+    hit = [any(q and (q in t or t in q) for q in quotes) for t in norm]
+    placed = all(q and any(q in t or t in q for t in norm) for q in quotes)
+    return [_h(t) for t, h in zip(sentences, hit) if not h] if placed else []
 
 
 def problems_text(video: Video) -> str:
