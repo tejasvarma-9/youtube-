@@ -76,6 +76,7 @@ def llm_answer(kind: str, ctx: dict) -> str:
             "title_options": ["Who Really Pays for Vending Machines?", "How Vending Machines Make Money", "The Business Behind Vending Machines"],
             "title": "Who Really Pays for Vending Machines?",
             "thumbnail_text": "THE HALLWAY IS RENT",
+            "thumbnail_before": "COSTS", "thumbnail_after": "PROFIT",
             "thumbnail_subject": "A large flat-illustrated vending machine in a hallway, coins and dollar bills floating around it, small arrows labelled with costs, navy background.",
             "description_intro": "A vending machine looks like a snack business. It is really a tiny real estate deal. Here is who gets paid every time you buy a soda.",
             "tags": ["how vending machines make money", "vending machine business", "passive income myth", "business breakdown"],

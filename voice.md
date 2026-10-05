@@ -89,10 +89,11 @@ Simple 2D hand-drawn explainer illustrations of round-headed stick figures in fu
 
 ## Thumbnails
 
-- Readable at phone size (about 170 px wide). 2 to 4 huge all-caps words, white with the last line yellow, thick black outline, on the dark side of the frame. Lead with the surprising number when the facts have one.
+Thumbnails get their own look, separate from the flat video pictures.
+- Readable at phone size (about 170 px wide). 2 to 4 huge all-caps words across the top, white with the last line yellow, thick black outline. Lead with the surprising number when the facts have one.
 - The text adds a curiosity gap; it never repeats the title and never claims more than the numbers show.
-- Dark navy background with a bright glow behind one very large subject (the product, or one stick figure with a big open-mouth reaction), with a few money icons.
-- No real logos. The Who Pays Who coin mark sits small in the top-right corner.
+- Glossy, high-detail, saturated art in a split screen: "before" (cost, red and orange) on the left, "after" (payoff, green and gold) on the right, with a one-word label under each side.
+- Generic stand-ins only: no real logos, brands, posters, show titles or real people. The Who Pays Who coin mark sits small at the bottom center.
 
 ## Description footer (always)
 
