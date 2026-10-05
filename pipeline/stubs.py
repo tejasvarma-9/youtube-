@@ -54,6 +54,8 @@ def llm_answer(kind: str, ctx: dict) -> str:
                 verdict = "ESTIMATE_OK" if parts[2].upper() == "ESTIMATE" else "SUPPORTED"
                 facts.append({"id": parts[0], "verdict": verdict, "note": "stub", "fix": "", "source_url": ""})
         return "===JSON===\n" + json.dumps({"facts": facts, "policy": []}) + "\n===END==="
+    if kind == "audit":
+        return "===JSON===\n" + json.dumps({"checks": []}) + "\n===END==="
     if kind == "revise":
         return (f"===SCRIPT===\n{ctx['script.txt']}\n===FACTS===\n{ctx['facts.txt']}\n===SOURCES===\n"
                 f"{ctx['sources.txt']}\n===CHANGES===\nstub | nothing changed\n")

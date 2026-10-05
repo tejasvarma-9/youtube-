@@ -434,6 +434,42 @@ class StubEndToEnd(unittest.TestCase):
             self.assertEqual(cli.main(["--stub", "auto", "How vending machines make money", "--slug", self.slug]), 0)
         self.assertEqual(revise.call_count, 2)
 
+    def test_independent_audit_blocks_and_is_remembered(self):
+        from pipeline import llm, s2_factcheck
+        from pipeline.common import Video
+        self.assertEqual(cli.main(["--stub", "new", "How vending machines make money", "--slug", self.slug]), 0)
+        self.assertEqual(cli.main(["--stub", "script", self.slug]), 0)
+        d = config.OUT / self.slug
+        real = llm.ask
+        bad = {"checks": [{"quote": "A used snack machine", "verdict": "MISMATCH", "script_value": "$1,500",
+                           "source_value": "$900", "source_url": "https://example.com/x", "note": "differs", "fix": "Say $900."}]}
+
+        def fake(prompt_text, kind, **kw):
+            if kind == "audit":
+                return "===JSON===\n" + json.dumps(bad) + "\n===END==="
+            return real(prompt_text, kind, **kw)
+
+        with mock.patch.object(llm, "ask", fake):
+            self.assertEqual(cli.main(["--stub", "factcheck", self.slug]), 1)
+        fc = json.loads((d / "factcheck.json").read_text())
+        self.assertFalse(fc["passed"])
+        self.assertIn("AUDIT MISMATCH", s2_factcheck.problems_text(Video(self.slug)))
+        self.assertIn("Independent audit", (d / "factcheck.md").read_text())
+
+        # Once the audit is clean it passes, and an unchanged script is not audited again.
+        calls = []
+
+        def clean(prompt_text, kind, **kw):
+            calls.append(kind)
+            return real(prompt_text, kind, **kw)
+
+        with mock.patch.object(llm, "ask", clean):
+            self.assertEqual(cli.main(["--stub", "factcheck", self.slug]), 0)
+            self.assertIn("audit", calls)
+            calls.clear()
+            self.assertEqual(cli.main(["--stub", "factcheck", self.slug]), 0)
+            self.assertNotIn("audit", calls)
+
     def test_revise_after_failed_factcheck(self):
         from pipeline import llm, s2_factcheck
         self.assertEqual(cli.main(["--stub", "new", "How vending machines make money", "--slug", self.slug]), 0)

@@ -14,6 +14,7 @@ from .common import (StageError, Video, extract_json, fill, log, parse_sections,
                      voice_profile)
 
 BAD = {"UNSUPPORTED", "WRONG"}
+AUDIT_BAD = {"MISMATCH", "OVERSTATED", "INCONSISTENT", "ARITHMETIC"}  # UNVERIFIED is listed but does not block
 
 
 def run(video: Video, stub: bool = False, full: bool = False) -> None:
@@ -63,20 +64,43 @@ def run(video: Video, stub: bool = False, full: bool = False) -> None:
     policy = result.get("policy", [])
     passed = not failures and not unchecked and not policy and not lint["errors"]
 
-    result.update({"passed": passed, "unchecked": unchecked, "lint_errors": lint["errors"]})
+    # A second, independent reading (it never sees the writer's fact list or sources) runs once the
+    # first check is clean, and again only when the script's words have changed.
+    audit = _previous(video).get("audit") if not full else None
+    if passed:
+        if not audit or audit.get("sha") != _h(script) or audit.get("problems"):
+            audit = _audit(video, script, stub)
+        passed = not audit["problems"]
+    else:
+        audit = None
+
+    result.update({"passed": passed, "unchecked": unchecked, "lint_errors": lint["errors"], "audit": audit})
     result.update(_settled(result, fact_lines, urls, sentences))
     video.write_json("factcheck.json", result)
     _write_report(video, result, fact_lines)
     _write_sources(video, sources)
 
+    n_audit = len(audit["problems"]) if audit else 0
     log(f"  fact-check: {'PASSED' if passed else 'FAILED'} "
-        f"({len(failures)} bad facts, {len(unchecked)} unchecked, {len(policy)} policy, {len(lint['errors'])} rule errors)")
+        f"({len(failures)} bad facts, {len(unchecked)} unchecked, {len(policy)} policy, {len(lint['errors'])} rule errors"
+        f"{f', {n_audit} found by the independent audit' if audit else ''})")
     if not passed:
         raise StageError(
             f"Fact-check failed. Read out/{video.slug}/factcheck.md, then either let Claude fix it:\n"
             f"  python -m pipeline revise {video.slug}\n"
             f"or fix script.txt and facts.txt yourself and run: python -m pipeline factcheck {video.slug}"
         )
+
+
+def _audit(video: Video, script: str, stub: bool) -> dict:
+    """An independent reader that checks the script against the real sources without the writer's notes."""
+    log("  independent audit: re-checking the script against primary sources (no writer notes)...")
+    text = fill(prompt("audit.md"), TOPIC=video.brief()["topic"], SCRIPT=script)
+    answer = llm.ask(text, "audit", web=True, stub=stub)
+    video.path("raw", "audit_answer.md").write_text(answer)
+    checks = extract_json(answer).get("checks", [])
+    problems = [c for c in checks if str(c.get("verdict", "")).upper() in AUDIT_BAD]
+    return {"sha": _h(script), "checks": checks, "problems": problems}
 
 
 def problems_text(video: Video) -> str:
@@ -91,6 +115,12 @@ def problems_text(video: Video) -> str:
             lines.append(f"- {f.get('id')} {f.get('verdict')}.{claim} Note: {f.get('note', '')}.{fix}{src}")
     for p in fc.get("policy", []):
         lines.append(f"- POLICY. Quote: \"{p.get('quote', '')}\". Problem: {p.get('problem', '')}. Suggested fix: {p.get('fix', '')}")
+    for c in (fc.get("audit") or {}).get("problems", []):
+        said = f" The script says {c['script_value']}." if c.get("script_value") else ""
+        found = f" The source says {c['source_value']}." if c.get("source_value") else ""
+        fix = f" Suggested fix: {c['fix']}" if c.get("fix") else ""
+        src = f" Source: {c['source_url']}" if c.get("source_url") else ""
+        lines.append(f"- AUDIT {str(c.get('verdict', '')).upper()}. Quote: \"{c.get('quote', '')}\".{said}{found} Note: {c.get('note', '')}.{fix}{src}")
     for fid in fc.get("unchecked", []):
         lines.append(f"- {fid} was not checked. Make sure its claim is stated exactly as its source says.")
     for e in fc.get("lint_errors", []):
@@ -216,6 +246,14 @@ def _write_report(video: Video, result: dict, fact_lines: dict) -> None:
     lines = [f"# Fact-check: {video.brief()['topic']}", "", f"**Result: {'PASSED' if result['passed'] else 'FAILED'}**", ""]
     if result["lint_errors"]:
         lines += ["## Rule errors", ""] + [f"- {e}" for e in result["lint_errors"]] + [""]
+    audit = result.get("audit")
+    if audit:
+        bad = audit.get("problems", [])
+        lines += ["## Independent audit", "", f"{len(audit.get('checks', []))} items looked at, {len(bad)} problems.", ""]
+        for c in audit.get("checks", []):
+            lines.append(f"- {str(c.get('verdict', '')).upper()}: \"{c.get('quote', '')}\". Script: {c.get('script_value', '')}. "
+                         f"Source: {c.get('source_value', '')} {c.get('source_url', '')}. {c.get('note', '')} {('Fix: ' + c['fix']) if c.get('fix') else ''}".rstrip())
+        lines.append("")
     if result.get("policy"):
         lines += ["## Policy problems", ""]
         for p in result["policy"]:

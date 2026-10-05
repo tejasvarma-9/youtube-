@@ -190,6 +190,8 @@ python -m pipeline run how-costco-makes-money
 
 `changes.md` lists every change. The previous version is kept in `raw/v1/`. After a revision the fact-check only re-checks the facts and sentences that changed; add `--full` to `factcheck` to check everything again.
 
+**Independent audit.** Once the normal fact-check is clean, a second Claude reads only the script (never the writer's fact list or sources), finds the primary source for each figure itself, and also checks that parts add up to totals, that the hook and the body don't contradict each other, that the worked examples' arithmetic is right, and that nothing is stated more strongly than its source. Mismatches block the video and go back to the writer in the same way as any fact-check failure; figures it simply couldn't find are listed as UNVERIFIED and don't block. It runs once per version of the script, so after you edit `script.txt` the next `factcheck` audits again (a few extra minutes). The result is in the "Independent audit" section of `factcheck.md`.
+
 To make your own edits through the writer (or apply someone's review), put the notes in a text file and pass it:
 
 ```bash
@@ -265,7 +267,7 @@ To replace a video that is already public, delete it in Studio and upload the ne
 | Stage | Command | Uses | Output in `out/<video>/` |
 |---|---|---|---|
 | Script | `script` | Claude Code with web research | `script.txt`, `facts.txt`, `sources.txt` |
-| Fact-check | `factcheck` | Claude Code fetches every source; rule checks | `factcheck.md`, `sources.md` (blocks the rest if it fails) |
+| Fact-check | `factcheck` | Claude Code fetches every source; rule checks; then an independent audit that reads only the script and looks the figures up itself | `factcheck.md`, `sources.md` (blocks the rest if it fails) |
 | Voiceover | `voice` | Gemini voice model, about 7 requests per video (a few paragraphs each) | `voiceover.wav`, `timeline.json` |
 | Shots | `shots` | Claude Code writes one scene per 10+ seconds | `shots.json` |
 | Images | `images` | Gemini 3.1 Flash Lite Image, batch mode | `images/` |
