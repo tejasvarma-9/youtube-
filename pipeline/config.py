@@ -92,7 +92,7 @@ TARGET_WORDS = 2200
 WORDS_MIN, WORDS_MAX = 1800, 2500
 
 DISCLAIMER = (
-    "Sources are listed below. Figures marked as estimates are our own calculations "
+    "Sources are listed above. Figures marked as estimates are our own calculations "
     "or industry estimates.\n"
     "For education and entertainment only. Not financial, investment, legal or tax advice."
 )

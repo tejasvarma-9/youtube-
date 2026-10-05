@@ -96,5 +96,5 @@ Simple 2D hand-drawn explainer illustrations of round-headed stick figures in fu
 
 ## Description footer (always)
 
-> Sources are listed below. Figures marked as estimates are our own calculations or industry estimates.
+> Sources are listed above. Figures marked as estimates are our own calculations or industry estimates.
 > For education and entertainment only. Not financial, investment, legal or tax advice.
