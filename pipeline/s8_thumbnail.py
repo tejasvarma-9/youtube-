@@ -1,8 +1,8 @@
 """Stage 8: thumbnail, 1280x720.
 
-Gemini draws the subject (no text, one normal-price request). The headline,
-red underline and coin mark are drawn by code, so the lettering is always sharp
-and every thumbnail has the same layout.
+Gemini draws the subject on a dark background (no text, one normal-price request).
+The headline and coin mark are drawn by code, so the lettering is always sharp
+and every thumbnail has the same layout: headline left, subject right.
 Writes thumbnail_art.png and thumbnail.png.
 """
 
@@ -14,10 +14,16 @@ from . import config, s5_images, stubs
 from .common import StageError, Video, log
 
 W, H = 1280, 720
-INK = (17, 17, 17)
-RED = (214, 40, 40)
-PAPER = (246, 248, 251)
-GRID = (222, 229, 238)
+THUMB_STYLE = (
+    "Style: simple 2D hand-drawn explainer illustration, thick black outlines, flat saturated colors. "
+    "Deep navy blue background with a soft bright glow behind the subject. "
+    "Put the subject in the right 60 percent of the frame, very large, and keep the left 40 percent "
+    "plain dark navy. 16:9. No text, no letters, no numbers, no logos, no photorealism, no 3D."
+)
+INK = (10, 10, 10)
+NAVY = (12, 22, 48)
+WHITE = (255, 255, 255)
+YELLOW = (255, 214, 0)
 
 FONTS = [
     "/System/Library/Fonts/Supplemental/Arial Black.ttf",
@@ -62,44 +68,41 @@ def _balanced(draw, text: str, font, max_w: int) -> list[str] | None:
 
 
 def compose(art_path, headline: str, out_path) -> None:
-    img = Image.new("RGB", (W, H), PAPER)
-    d = ImageDraw.Draw(img)
-    for x in range(0, W, 40):
-        d.line([(x, 0), (x, H)], fill=GRID, width=1)
-    for y in range(0, H, 40):
-        d.line([(0, y), (W, y)], fill=GRID, width=1)
-
-    # Subject art fills the lower part of the frame, under the headline.
+    """Art fills the frame; a dark fade on the left carries a big outlined headline."""
     art = Image.open(art_path).convert("RGB")
-    box_w, box_h = 1180, 470
-    art.thumbnail((box_w, box_h), Image.LANCZOS)
-    img.paste(art, ((W - art.width) // 2, H - art.height - 20))
+    scale = max(W / art.width, H / art.height)
+    art = art.resize((round(art.width * scale), round(art.height * scale)), Image.LANCZOS)
+    left, top = (art.width - W) // 2, (art.height - H) // 2
+    img = art.crop((left, top, left + W, top + H))
 
-    # Headline: biggest size that fits in two lines.
-    for size in range(104, 50, -4):
+    fade = Image.new("L", (W, 1))
+    for x in range(W):
+        fade.putpixel((x, 0), max(0, min(235, round(235 * (1 - x / (W * 0.62))))))
+    img = Image.composite(Image.new("RGB", (W, H), NAVY), img, fade.resize((W, H)))
+    d = ImageDraw.Draw(img)
+
+    # Headline: biggest size that fits the left column in at most three lines.
+    max_w = 700
+    for size in range(150, 60, -6):
         font = _font(size)
-        lines = _balanced(d, headline, font, W - 100)
-        if lines:
+        lines = _wrap(d, headline, font, max_w)
+        if len(lines) <= 3 and all(d.textlength(ln, font=font) <= max_w for ln in lines):
             break
     else:
-        lines = _wrap(d, headline, font, W - 100)[:2]
-    y = 34
-    for line in lines:
-        bbox = d.textbbox((0, 0), line, font=font)
-        tw = bbox[2] - bbox[0]
-        x = (W - tw) // 2
-        d.rectangle([x - 18, y - 6, x + tw + 18, y + (bbox[3] - bbox[1]) + 22], fill=PAPER)
-        d.text((x, y - bbox[1]), line, font=font, fill=INK)
-        y += (bbox[3] - bbox[1]) + 22
-    last_w = d.textlength(lines[-1], font=font)
-    d.rectangle([(W - last_w) // 2, y - 10, (W + last_w) // 2, y - 2], fill=RED)
+        lines = _wrap(d, headline, font, max_w)[:3]
+    gap = round(size * 0.12)
+    heights = [d.textbbox((0, 0), ln, font=font)[3] for ln in lines]
+    y = (H - (sum(heights) + gap * (len(lines) - 1))) // 2
+    for i, (line, h) in enumerate(zip(lines, heights)):
+        fill = YELLOW if i == len(lines) - 1 else WHITE
+        d.text((50, y), line, font=font, fill=fill, stroke_width=max(6, size // 12), stroke_fill=INK)
+        y += h + gap
 
-    # Coin mark, bottom right.
     if config.LOGO.exists():
-        logo = Image.open(config.LOGO).convert("RGBA").resize((96, 96), Image.LANCZOS)
+        logo = Image.open(config.LOGO).convert("RGBA").resize((84, 84), Image.LANCZOS)
         mask = Image.new("L", logo.size, 0)
-        ImageDraw.Draw(mask).ellipse([0, 0, 95, 95], fill=255)
-        img.paste(logo, (W - 96 - 22, H - 96 - 22), mask)
+        ImageDraw.Draw(mask).ellipse([0, 0, 83, 83], fill=255)
+        img.paste(logo, (W - 84 - 24, 24), mask)
     img.save(out_path)
 
 
@@ -113,8 +116,7 @@ def run(video: Video, stub: bool = False) -> None:
             if not config.GOOGLE_API_KEY:
                 raise StageError("GOOGLE_API_KEY is empty. Put it in the .env file (see README), or run with --stub.")
             refs = [s5_images.upload_file(p) for p in s5_images.style_refs()]
-            prompt = (f"{meta['thumbnail_subject']}\n\nNo text, no letters, no logos, no faces looking at the camera. "
-                      "Leave the top third of the image plain and empty. " + config.IMAGE_STYLE_SUFFIX)
+            prompt = (f"{meta['thumbnail_subject']}\n\n{THUMB_STYLE}")
             data = s5_images.generate_sync(s5_images.build_request(prompt, refs))
             if not data:
                 raise StageError("Gemini returned no thumbnail image. Edit thumbnail_subject in metadata.json and re-run.")

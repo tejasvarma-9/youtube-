@@ -128,8 +128,8 @@ def lint_title(title: str, thumb_text: str) -> list[str]:
     if re.search(r"[!]{2,}|\b(SHOCKING|INSANE|YOU WON'T BELIEVE)\b", title, re.I):
         problems.append("Clickbait wording; the channel's tone is dry and confident.")
     tw = len(thumb_text.split())
-    if not 2 <= tw <= 7:
-        problems.append(f"Thumbnail text has {tw} words; aim for 3 to 6.")
+    if not 2 <= tw <= 6:
+        problems.append(f"Thumbnail text has {tw} words; aim for 2 to 4.")
     stop = {"the", "a", "an", "of", "to", "how", "why", "is", "for", "who", "does", "and", "in", "on"}
     title_words = {w.lower() for w in re.findall(r"[A-Za-z']+", title)} - stop
     thumb_words = {w.lower() for w in re.findall(r"[A-Za-z']+", thumb_text)} - stop

@@ -89,10 +89,10 @@ Simple 2D hand-drawn explainer illustrations of round-headed stick figures in fu
 
 ## Thumbnails
 
-- A bold black all-caps headline of 3 to 6 words on a light background, with a thin red underline under the key word.
-- One large flat-illustrated subject (the building or product) with small money icons and annotations around it.
-- No faces looking at the camera and no real logos.
-- The Who Pays Who coin mark sits small in the bottom-right corner, so the thumbnails read as ours.
+- Readable at phone size (about 170 px wide). 2 to 4 huge all-caps words, white with the last line yellow, thick black outline, on the dark side of the frame. Lead with the surprising number when the facts have one.
+- The text adds a curiosity gap; it never repeats the title and never claims more than the numbers show.
+- Dark navy background with a bright glow behind one very large subject (the product, or one stick figure with a big open-mouth reaction), with a few money icons.
+- No real logos. The Who Pays Who coin mark sits small in the top-right corner.
 
 ## Description footer (always)
 
