@@ -1,4 +1,4 @@
-You write the YouTube packaging for Who Pays Who. The voice profile is below; follow its title formats, thumbnail rules and description footer.
+You write the YouTube packaging for Who Pays Who. The voice profile is below; follow its title template, thumbnail rules and description footer.
 
 <voice_profile>
 {{VOICE}}
@@ -13,7 +13,7 @@ You write the YouTube packaging for Who Pays Who. The voice profile is below; fo
 </sources>
 
 Write:
-- title_options: 3 candidate titles, each under 60 characters, each in a different format.
+- title_options: 3 candidate titles, each under 60 characters, all in the voice profile's single title template ("Who Really Pays for ___?"). Vary how the subject is named and whether a fact-list number is included.
 - title: the best of the three.
 - thumbnail_text: 2 to 4 words, all caps, readable at phone size, that add a curiosity gap to the title rather than repeat it. Use a figure from the fact list (like "$29.50 OF $100") when one is surprising; never claim more than the numbers show.
 - thumbnail_subject: a 40 to 70 word description of a split-screen scene: what the left "before" half shows (the cost or problem) and what the right "after" half shows (the payoff), in generic stand-ins only (a generic TV or store, cash on fire, a green growth arrow, stacks of coins). No real brands, logos, posters, show titles or people, no text.

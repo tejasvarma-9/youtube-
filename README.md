@@ -245,7 +245,7 @@ For each video:
 6. **Audience:** choose "No, it's not made for kids".
 7. Click **Show more**, set the category to **Education**. Do not upload `captions.srt` (the captions are already in the video).
 8. **Altered content:** choose **No**. The narrator is a synthetic voice but doesn't pretend to be a real person, and the pictures are illustrations. If a scene ever looks like realistic footage of a real person or event, choose Yes.
-9. Click **Next** through Video elements (skip subtitles, end screen and cards for now) and Checks.
+9. On **Video elements**, skip subtitles. Click **End screen**, choose a template with one video, set it to **Choose specific video**, and pick the video the script names in its last paragraph. Give it the last 15 to 20 seconds. Then click **Next** through Checks. (Costco and Netflix had no end screen, so 0% of viewers clicked on to another video.)
 10. **Visibility:** choose **Private** and click **Save**.
 11. Watch it on your phone in the YouTube app: the sound, the captions, the chapters on the timeline and the thumbnail.
 12. In Studio, open **Content**, click the Private lock on that row, choose **Public** (or **Schedule**), and save.

@@ -61,6 +61,9 @@ class LintTests(unittest.TestCase):
         paras = [intro] + [filler + "."] * 3 + ["But here's the catch: who pays for it?"] + [filler + "."] * 2
         hooked = "\n\n".join(paras + ["So what is next? The next breakdown.", outro])
         self.assertFalse([w for w in lint_script(hooked, "")["warnings"] if w.startswith("Hook")])
+        self.assertTrue([w for w in lint_script(hooked, "")["warnings"] if w.startswith("Ending")])
+        pointed = "\n\n".join(paras + ["So what is next? My video on Costco shows the same trick.", outro])
+        self.assertFalse([w for w in lint_script(pointed, "")["warnings"] if w.startswith(("Hook", "Ending"))])
 
     def test_opening_and_outro_rules(self):
         hook = "You walk past a vending machine every day. It can out-earn the gift shop next to it."
@@ -90,9 +93,10 @@ class LintTests(unittest.TestCase):
         self.assertTrue(any("no source" in e for e in errors))
 
     def test_title_pair(self):
-        self.assertEqual(lint_title("How Costco Makes Money", "THE $60 MEMBERSHIP TRICK"), [])
-        problems = lint_title("How Costco Makes Money From Memberships", "COSTCO MEMBERSHIPS MONEY")
+        self.assertEqual(lint_title("Who Really Pays for Costco's Cheap Prices?", "THE $60 MEMBERSHIP TRICK"), [])
+        problems = lint_title("Who Really Pays for Costco Memberships?", "COSTCO MEMBERSHIPS MONEY")
         self.assertTrue(any("repeats the title" in p for p in problems))
+        self.assertTrue(any("Off template" in p for p in lint_title("How Costco Makes Money", "THE $60 TRICK")))
 
     def test_chapters(self):
         ok = [{"start": 0, "title": "a"}, {"start": 40, "title": "b"}, {"start": 90, "title": "c"}]

@@ -101,6 +101,8 @@ def _hooks(script: str) -> list[str]:
         out.append("Hook: nothing around the halfway mark opens a new question or teases what is coming; add a middle hook.")
     if not HOOK_CUE.search(paragraphs[-2]):
         out.append("Hook: the paragraph before the final subscribe line should end with a hook (a last question or a pointer to the next video).")
+    if not re.search(r"\bvideo\b", paragraphs[-2], re.I):
+        out.append("Ending: the paragraph before the subscribe line should point to one specific earlier video by name (see Published videos in voice.md); the end screen shows the same video.")
     return out
 
 
@@ -142,6 +144,8 @@ def lint_title(title: str, thumb_text: str) -> list[str]:
         problems.append(f"Title is {len(title)} characters; keep it under 60 so it isn't cut off.")
     if len(title) > 40 and not re.search(r"\b[A-Z][a-z]+", title[:40]):
         problems.append("The subject should appear in the first 40 characters.")
+    if not re.match(r"who really pays for\b", title.strip(), re.I):
+        problems.append("Off template: every title should start \"Who Really Pays for\" (see Titles in voice.md).")
     if re.search(r"so you want to own", title, re.I):
         problems.append("\"So You Want to Own\" is another channel's format.")
     if re.search(r"[!]{2,}|\b(SHOCKING|INSANE|YOU WON'T BELIEVE)\b", title, re.I):

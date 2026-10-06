@@ -31,7 +31,7 @@ Every prompt in this pipeline includes this file. Change the channel's voice her
 8. **Countdown:** numbered mistakes or scenarios that give the back half momentum.
 9. **Zoom out:** one short paragraph that states the paradox of the whole industry.
 10. **Profit potential:** an optimistic and a realistic scenario, with worked numbers, framed as illustrations.
-11. **End hook and close:** answer the opening question, then a line that calls back to the start hook and opens one last question or points at what to watch next (for example the next breakdown), so viewers keep watching instead of leaving. After that, one final sentence: "If this was useful, like the video and subscribe to Who Pays Who for the next breakdown." Vary the wording, but it is one sentence, it is the last thing in the script, and it names the channel. The subscribe ask appears nowhere else, never mid-video.
+11. **End hook and close:** answer the opening question, then a line that calls back to the start hook, then point to **one specific earlier video by name** from "Published videos" below and give one reason this viewer will want it ("If cheap prices surprised you here, my video on who really pays for Costco's cheap prices shows how a membership card pays for them. It's on your screen now."). The end screen shows that video, so the line must name the same one. After that, one final sentence: "If this was useful, like the video and subscribe to Who Pays Who for the next breakdown." Vary the wording, but it is one sentence, it is the last thing in the script, and it names the channel. The subscribe ask appears nowhere else, never mid-video.
 
 ## Techniques every script uses
 
@@ -66,15 +66,18 @@ Every prompt in this pipeline includes this file. Change the channel's voice her
 
 ## Titles
 
-Rotate between these formats:
-- How ___ Makes Money
-- Why ___ Is So Expensive
-- The Business Behind ___
-- How Much Money Does ___ Make?
-- The Economics of ___
-- Who Really Pays for ___? (the channel's own format; use it often)
+Every title uses one template, so viewers and YouTube learn what the channel is (both channels we studied, Neon Rush and Ink Explainer, use one question template on almost every video):
 
-Keep titles under 60 characters with the subject in the first 40. Thumbnail text never repeats the title's words.
+- **Who Really Pays for ___?**, where ___ is the thing the viewer pays for, said the way they would say it ("Your Netflix Subscription", "Costco's Cheap Prices", "Your Spotify Premium").
+- Add a number from the fact list when it makes the question sharper and the facts support it exactly (put the exact fact-list figure inside the question, next to the thing it prices). Never round a number up or state it more strongly than the facts.
+
+Keep titles under 60 characters with the subject in the first 40. Thumbnail text never repeats the title's words. Variety comes from the subject and the thumbnail, not from changing the template.
+
+## Published videos
+
+Use these for the end-of-video pointer. Add each new video here once it is public.
+- Who Really Pays for Costco's Cheap Prices? (memberships, thin markups, warehouse retail)
+- The Netflix video: where your Netflix subscription money goes (streaming, content spending, subscriptions). Refer to it by that description, not by a quoted title.
 
 ## Visual style (images)
 
