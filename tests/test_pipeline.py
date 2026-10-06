@@ -46,13 +46,13 @@ class LintTests(unittest.TestCase):
     def test_flags_policy_format_and_unchecked_numbers(self):
         script = "Welcome back! Costs run $2-5 million and margins are 12%. Hit the bell for more."
         errors = " ".join(lint_script(script, "F1 | margins are 12% | S1")["errors"])
-        for needle in ("welcome back", "hit the bell", "$2-5 million", "Unchecked figure: 2", "Intro:", "Outro:"):
+        for needle in ("welcome back", "hit the bell", "$2-5 million", "Unchecked figure: 2", "Outro:"):
             self.assertIn(needle.lower(), errors.lower())
         self.assertNotIn("Unchecked figure: 12", errors)
 
     def test_hook_warnings(self):
         filler = " ".join(["plain"] * 60)
-        intro = "A hook. This is Who Pays Who, today we look at snacks."
+        intro = "A hook about you. Who pays for the snacks?"
         outro = "If this was useful, like the video and subscribe to Who Pays Who."
         flat = "\n\n".join([intro] + [filler + "."] * 6 + ["The end of it.", outro])
         msgs = " ".join(lint_script(flat, "")["warnings"])
@@ -62,22 +62,28 @@ class LintTests(unittest.TestCase):
         hooked = "\n\n".join(paras + ["So what is next? The next breakdown.", outro])
         self.assertFalse([w for w in lint_script(hooked, "")["warnings"] if w.startswith("Hook")])
 
-    def test_intro_and_outro_rules(self):
-        hook = "A hallway machine can out-earn a gift shop."
-        intro = "This is Who Pays Who, where we follow the money. Today, who pays for the snacks."
+    def test_opening_and_outro_rules(self):
+        hook = "You walk past a vending machine every day. It can out-earn the gift shop next to it."
+        question = "So who actually gets paid when you press the button?"
         outro = "If this was useful, like the video and subscribe to Who Pays Who."
-        good = "\n\n".join([hook, intro, "The middle part.", outro])
-        self.assertEqual(lint_script(good, "")["errors"], [])
-        no_intro = " ".join(["word"] * 160) + "\n\n" + outro
-        self.assertTrue(any(e.startswith("Intro:") for e in lint_script(no_intro, "")["errors"]))
-        no_outro = "\n\n".join([hook, intro, "The middle part."])
+        good = "\n\n".join([hook, question, "The middle part.", outro])
+        result = lint_script(good, "")
+        self.assertEqual(result["errors"], [])
+        self.assertFalse([w for w in result["warnings"] if w.startswith("Opening:")])
+        old_intro = "\n\n".join([hook, "Welcome to Who Pays Who. Today, we find out who pays.", "The middle part.", outro])
+        self.assertTrue(any(e.startswith("Opening:") for e in lint_script(old_intro, "")["errors"]))
+        not_about_you = "\n\n".join(["A machine sits in a hallway. It earns money.", question, outro])
+        self.assertTrue(any("you" in w for w in lint_script(not_about_you, "")["warnings"] if w.startswith("Opening:")))
+        late_question = "\n\n".join([hook, " ".join(["word"] * 100) + ".", question, outro])
+        self.assertTrue(any("90 words" in w for w in lint_script(late_question, "")["warnings"]))
+        no_outro = "\n\n".join([hook, question, "The middle part."])
         self.assertTrue(any(e.startswith("Outro:") for e in lint_script(no_outro, "")["errors"]))
-        middle = "\n\n".join([hook, intro, "Subscribe to Who Pays Who now.", "The end.", outro])
+        middle = "\n\n".join([hook, question, "Subscribe to Who Pays Who now.", "The end.", outro])
         self.assertTrue(any("middle" in e for e in lint_script(middle, "")["errors"]))
 
     def test_years_are_not_figures(self):
         result = lint_script("In 2019 it cost $40,000.", "F1 | cost $40,000 | S1")
-        self.assertEqual([e for e in result["errors"] if not e.startswith(("Intro:", "Outro:"))], [])
+        self.assertEqual([e for e in result["errors"] if not e.startswith(("Opening:", "Outro:"))], [])
 
     def test_fact_line_needs_tag(self):
         errors = lint_script("It cost $40,000.", "F1 | cost $40,000 | trust me")["errors"]

@@ -20,8 +20,8 @@ Every prompt in this pipeline includes this file. Change the channel's voice her
 
 **Three hooks hold the viewer: start, middle and end.** Every script has all three.
 
-1. **Start hook** within the first three sentences: a contradiction or a surprising number. The hook always comes first, before any greeting.
-2. **Channel intro and open loop**, right after the hook, as its own short paragraph (two short sentences, about 5 seconds): "Welcome to Who Pays Who. Today, we find out who really pays for ..." and say what the viewer will understand by the end. Vary the wording slightly from video to video, but always welcome the viewer by the channel name.
+1. **Start hook, about the viewer** (first two or three sentences): open on "you" and something the viewer pays for, uses or believes ("You pay for this every month without thinking about it."), then hit them with a surprising number or contradiction about it. The hook always comes first, before anything else.
+2. **The question, by about 30 seconds** (within the first 90 words): ask the one question the video answers ("So where does that money actually go?") and promise what the viewer will understand by the end. **No channel intro.** Do not say "Welcome to Who Pays Who", "This is Who Pays Who" or the channel name anywhere except the final subscribe sentence. A new viewer clicked for the answer, not for us; the first 60 seconds are where most of them leave.
 3. **Reframe** what the business really is ("a gym is a subscription business that happens to have dumbbells in it").
 4. **Cost and structure:** what it takes to get in, with real ranges.
 5. **The mechanism:** how the money actually flows, through one named example character or a simple analogy. Compress it into a **one-line model** the viewer can repeat ("monthly dues times members, minus fixed costs").
@@ -60,7 +60,7 @@ Every prompt in this pipeline includes this file. Change the channel's voice her
 - Predict markets, or tell viewers to buy, sell or hold any security, crypto or fund.
 - Promise viewers income ("you will earn"). Profit sections are illustrations ("a mid-size gym can...").
 - Insult or mock real people, or bring in politics.
-- Add a sponsor read, a filler greeting ("hey guys", "welcome back", "in this video"), or a subscribe ask anywhere except the final sentence.
+- Add a sponsor read, a filler greeting ("hey guys", "welcome back", "in this video"), a channel intro ("Welcome to Who Pays Who"), or a subscribe ask anywhere except the final sentence.
 - Copy phrasing or structure from an existing video, including the reference scripts in "Finance Magical Prompt.pdf".
 - Use "So You Want to Own a ___" as a title. It is another channel's series.
 

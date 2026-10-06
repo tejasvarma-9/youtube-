@@ -43,14 +43,31 @@ def _numbers(text: str) -> set[str]:
     return out
 
 
-def _intro_outro(script: str) -> list[str]:
-    """The channel intro goes right after the hook; one like-and-subscribe line closes the video."""
+SENTENCE = re.compile(r"(?<=[.!?])\s+")
+
+
+def _opening(script: str) -> tuple[list[str], list[str]]:
+    """The opening is about the viewer, not the channel: no channel intro, "you" in the first two
+    sentences, and the video's question asked within about 30 seconds (90 words)."""
+    name = config.CHANNEL_NAME
+    errors, warnings = [], []
+    paragraphs = [p for p in script.split("\n\n") if p.strip()]
+    body = "\n\n".join(paragraphs[:-1]) if len(paragraphs) > 1 else script
+    if name.lower() in " ".join(body.split()[:150]).lower():
+        errors.append(f"Opening: don't say the channel name \"{name}\" in the opening. Go straight from the hook into the question; the name belongs only in the final subscribe line.")
+    first_two = " ".join(SENTENCE.split(script.strip())[:2])
+    if not re.search(r"\b(you|your|you're|you've)\b", first_two, re.I):
+        warnings.append("Opening: the first two sentences should be about the viewer (\"you\", \"your\"): something they pay for, use or believe.")
+    if "?" not in " ".join(script.split()[:90]):
+        warnings.append("Opening: ask the video's core question within the first 90 words (about 30 seconds).")
+    return errors, warnings
+
+
+def _outro(script: str) -> list[str]:
+    """One like-and-subscribe line closes the video."""
     name = config.CHANNEL_NAME
     out = []
     paragraphs = [p for p in script.split("\n\n") if p.strip()]
-    first_words = " ".join(script.split()[:150])
-    if name.lower() not in first_words.lower():
-        out.append(f"Intro: say the channel name \"{name}\" and what today's video covers within the first 150 words, right after the hook.")
     subs = [i for i, p in enumerate(paragraphs) if re.search(r"\bsubscribe\b", p, re.I)]
     last = len(paragraphs) - 1
     if not subs:
@@ -101,7 +118,9 @@ def lint_script(script: str, facts: str) -> dict:
     for m in GARBLED_RANGE.finditer(script):
         errors.append(f"Number format: \"{m.group(0)}\" will be read badly; write it out in full, like \"$2 million to $5 million\".")
 
-    errors += _intro_outro(script)
+    opening_errors, opening_warnings = _opening(script)
+    errors += opening_errors + _outro(script)
+    warnings += opening_warnings
     warnings += _hooks(script)
 
     fact_numbers = _numbers(facts)

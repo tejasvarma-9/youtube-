@@ -53,7 +53,7 @@ The quality check runs on its own at the end of `auto`. It listens to the finish
 
 Then check yourself:
 
-- Does the script open with the hook, then "This is Who Pays Who..." and end with one like-and-subscribe line? (The rule check enforces this.)
+- Does the script open on "you" and a surprising number, ask its question within about 30 seconds, never say the channel name until the last line, and end with one like-and-subscribe line? (The rule check enforces this.)
 - Do the captions match the voice? Do the pictures look sharp?
 - Does the thumbnail text claim only what the numbers show (the quality check also checks this)? To change it, edit `"thumbnail_text"` in `out/<slug>/metadata.json`, then run `python -m pipeline thumbnail <slug>`. To change the description opening, edit `"description_intro"` there and run `python -m pipeline metadata <slug>`. Your edits survive rebuilds as long as the script is unchanged; delete `metadata.json` to have Claude write fresh ones.
 
@@ -255,7 +255,7 @@ To replace a video that is already public, delete it in Studio and upload the ne
 
 ## Rules to remember
 
-- **Script shape:** hook first, then a two-sentence channel intro ("Welcome to Who Pays Who. Today, we find out ..."), the video, and one like-and-subscribe sentence naming the channel as the last line. Never ask for the subscribe in the middle.
+- **Script shape:** a hook about the viewer ("you") with a surprising number, the video's question within about 30 seconds, no channel intro, the video, and one like-and-subscribe sentence naming the channel as the last line. Never ask for the subscribe in the middle.
 - **Three hooks:** every script has a hook at the start, in the middle (about the halfway mark, a question or twist the second half pays off) and at the end (a last question or pointer to the next video, just before the subscribe line). The rule check warns when the middle or end hook is missing.
 - **Claims:** no figure without a source or an "estimate" tag. The title, thumbnail text and angle must not claim more than the numbers show. The fact-check covers the script; the quality check covers the title, thumbnail text and description opening.
 - **Never** paste an API key into chat. Keys live only in `.env` on your Mac.
@@ -277,7 +277,7 @@ To replace a video that is already public, delete it in Studio and upload the ne
 | Quality check | `qc` | faster-whisper re-listens; ffmpeg measures sound and picture; Claude checks pictures and claims | `qc.md`, `qc.json` |
 | Review | `review` | | `review/REVIEW.md` |
 
-Every script opens with the hook, then a two-sentence channel intro ("Welcome to Who Pays Who. Today, we find out ..."), and ends with one like-and-subscribe sentence naming the channel. The rule check (`script_lint.json`) fails a script that lacks either, or that asks for the subscribe anywhere else.
+Every script opens with a hook about the viewer, asks its question within about 30 seconds, and never says the channel name until the final like-and-subscribe sentence. (Changed 2026-10-06: Costco lost about 60% of viewers in the first minute, right where the old channel intro sat.) The rule check (`script_lint.json`) fails a script that names the channel in its opening, that lacks the closing subscribe line, or that asks for the subscribe anywhere else; it warns when the first two sentences are not about "you" or the question comes late.
 
 `run` skips stages that are already done. Each stage also runs on its own, for example `python -m pipeline voice how-costco-makes-money`.
 
