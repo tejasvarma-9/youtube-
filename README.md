@@ -290,7 +290,7 @@ Every script opens with a hook about the viewer, asks its question within about 
 | Voice, about 14 minutes of audio (Gemini, $6 per million audio tokens; doubles in January 2027) | about $0.13 | about $1.70 |
 | Script, fact-check, shots, metadata | $0 | $0 (your Claude plan) |
 
-The image count is the cost lever. `MIN_SHOT_SECONDS=10` in `.env` keeps each image on screen for at least 10 seconds. Setting it to 6 matches the style spec's one image per sentence, but roughly doubles the image bill to about $30 a month.
+The image count is the cost lever. In the first minute, where most viewers decide to leave, a new picture appears about every sentence (`FAST_START_SECONDS=60`, `FAST_START_SHOT_SECONDS=3`). After that, `MIN_SHOT_SECONDS=8` keeps each picture on screen for at least 8 seconds. A 10-minute video gets roughly 85 to 95 pictures, about $1.55 in batch images. Pictures are one idea each, with expressive faces and no drawn words or numbers (changed 2026-10-06 after comparing with Ink Explainer, which shows about 30 pictures in its first minute).
 
 ## Settings you can put in `.env`
 
@@ -302,7 +302,9 @@ The image count is the cost lever. `MIN_SHOT_SECONDS=10` in `.env` keeps each im
 | `GEMINI_TTS_MODEL` | `gemini-3.8-flash-lite-tts` | The voice model. Each model has its own daily request limit; `gemini-2.5-flash-preview-tts` is a paid fallback ($10 per million audio tokens, about $0.17 a video) |
 | `GEMINI_TTS_CHUNK_CHARS` | `1500` | Text per voice request. Google limits requests per day (100 on the default model), so the script goes out in chunks. Lower it (800) if the voice cuts passages short |
 | `GEMINI_TTS_MIN_INTERVAL_S` | `0` | Seconds to wait between voice requests. Set to `7` if the voice step keeps hitting rate limits |
-| `MIN_SHOT_SECONDS` | `10` | Lower means more images and more cost |
+| `MIN_SHOT_SECONDS` | `8` | Lower means more images and more cost |
+| `FAST_START_SECONDS` | `60` | How long the opening gets faster pictures; `0` turns it off |
+| `FAST_START_SHOT_SECONDS` | `3` | Shortest picture in the opening (in practice about one per sentence) |
 | `CLAUDE_MODEL` | Claude Code's default | |
 
 ## Tests

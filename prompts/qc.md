@@ -10,7 +10,8 @@ Each picture is meant to show this scene:
 
 1. Pictures. Report a shot only if it has one of these problems:
    - text in the picture that is garbled, misspelled or unreadable (severity high)
-   - a real company logo or a recognizable real person (severity high)
+   - a real company logo, a company or brand name written anywhere in the picture (on a sign, a product, a building), or a recognizable real person (severity high)
+   - any number drawn in the picture (severity high): numbers belong only in code-drawn charts
    - photorealistic or 3D instead of the channel's flat 2D style, or clearly out of style with the others (severity low)
    - clearly doesn't match its scene, or is broken (cut off, blank, duplicated subject) (severity low, or high if it is wrong in a misleading way)
 2. Thumbnail. Report a problem if its text is hard to read on a phone, is cut off, or misspelled.

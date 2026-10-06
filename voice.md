@@ -20,8 +20,8 @@ Every prompt in this pipeline includes this file. Change the channel's voice her
 
 **Three hooks hold the viewer: start, middle and end.** Every script has all three.
 
-1. **Start hook, about the viewer** (first two or three sentences): open on "you" and something the viewer pays for, uses or believes ("You pay for this every month without thinking about it."), then hit them with a surprising number or contradiction about it. The hook always comes first, before anything else.
-2. **The question, by about 30 seconds** (within the first 90 words): ask the one question the video answers ("So where does that money actually go?") and promise what the viewer will understand by the end. **No channel intro.** Do not say "Welcome to Who Pays Who", "This is Who Pays Who" or the channel name anywhere except the final subscribe sentence. A new viewer clicked for the answer, not for us; the first 60 seconds are where most of them leave.
+1. **Start hook: the puzzle, not the answer** (first two or three sentences). Lead with something the viewer pays for or uses and a surprising number or contradiction about it ("Membership fees are less than 2 cents of every dollar Costco takes in."). Do NOT give the video's answer here. The hook creates the question; the payoff comes later.
+2. **The question, by about 30 seconds** (within the first 90 words): ask the one question the video answers ("So how does a store that barely charges for the card make most of its money from it?"). Then go straight into the story. **No roadmap** ("By the end of this video, you'll understand...", "you'll see...", "we'll look at...") and **no channel intro** (no "Welcome to Who Pays Who", "This is Who Pays Who" or the channel name anywhere except the final subscribe sentence). Reveal the answer to the opening question between about 60 and 90 seconds, then spend the rest of the video on how and why.
 3. **Reframe** what the business really is ("a gym is a subscription business that happens to have dumbbells in it").
 4. **Cost and structure:** what it takes to get in, with real ranges.
 5. **The mechanism:** how the money actually flows, through one named example character or a simple analogy. Compress it into a **one-line model** the viewer can repeat ("monthly dues times members, minus fixed costs").
@@ -44,7 +44,7 @@ Every prompt in this pipeline includes this file. Change the channel's voice her
 
 - Mostly short to medium sentences, with the occasional long build-up and short fragments for emphasis.
 - Define jargon immediately, with an analogy.
-- Land a new fact, number or story beat every 30 to 90 seconds.
+- Land a new fact, number or story beat every 30 to 90 seconds. Keep sentences short in the first minute: each sentence there gets its own picture.
 - Write clean prose paragraphs only. No headings, bullets, music cues, scene directions or timestamps.
 - Write money and ranges in full, the way they should be spoken: "$2 million to $5 million", never "$2-5M". "Percent" may be written as "%".
 - Target 1,800 to 2,500 words, which is about 11 to 16 minutes.
@@ -78,14 +78,15 @@ Keep titles under 60 characters with the subject in the first 40. Thumbnail text
 
 ## Visual style (images)
 
-Simple 2D hand-drawn explainer illustrations of round-headed stick figures in full, labeled scenes, readable in 2 seconds, in 16:9.
+Simple 2D hand-drawn explainer illustrations of round-headed stick figures, readable in one second, in 16:9.
+- **One idea per picture:** one or two figures and one object or symbol, with plenty of empty space. No crowded scenes (no full store floors packed with shelves, carts and signs).
 - Thick black outlines, flat colors, very light shading.
-- Round heads, dot eyes, line mouths. Generic workers, owners, customers and executives.
-- Full environments (store floors, offices, warehouses, farms, roads), never a lone figure on a blank page.
-- Large labels drawn into the scene: price tags, signs, category names ("$4,999", "RENT").
+- Round heads with **expressive faces** that act out the narration: confused, surprised, worried, a lightbulb moment, pointing at the viewer when the narration says "you".
+- Simple settings only when they help (a counter, a doorway, a desk), never busy backgrounds.
+- **No drawn words or numbers.** Use icons, arrows, thought bubbles, coins, stacks of cash and before/after splits instead. Numbers appear only in charts drawn in code from the fact list.
 - White or light gray-blue backgrounds. Money green and warning red only for costs, profits and risk.
 - A recurring example character gets one locked description, repeated word for word in every prompt.
-- **Never:** photorealism, 3D, anime, cinematic lighting, real recognizable people, real company logos or trademarks.
+- **Never:** photorealism, 3D, anime, cinematic lighting, real recognizable people, real company logos, trademarks or company names written anywhere (not even on a plain sign).
 
 ## Thumbnails
 

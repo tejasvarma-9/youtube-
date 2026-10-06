@@ -1,7 +1,9 @@
 """Stage 4: group sentences into shots and write one image description per shot.
 
 Each shot covers one or more whole sentences and stays on screen for at least
-MIN_SHOT_SECONDS, which sets the image count and so the image cost.
+MIN_SHOT_SECONDS, which sets the image count and so the image cost. In the first
+FAST_START_SECONDS the minimum drops to FAST_START_SHOT_SECONDS, so the opening
+gets a new picture about every sentence.
 Writes shots.json.
 """
 
@@ -11,14 +13,16 @@ from . import config, llm
 from .common import StageError, Video, extract_json, fill, log, prompt, voice_profile
 
 
-def group(sentences: list[dict], duration: float, min_s: float = None) -> list[dict]:
+def group(sentences: list[dict], duration: float, min_s: float = None,
+          fast_s: float = 0, fast_until: float = 0) -> list[dict]:
     min_s = min_s or config.MIN_SHOT_SECONDS
     shots, cur = [], []
     for s in sentences:
         if cur:
             length = s["start"] - cur[0]["start"]
             new_para = s["paragraph"] != cur[-1]["paragraph"]
-            if length >= min_s or (new_para and length >= min_s * 0.6):
+            limit = fast_s if fast_s and cur[0]["start"] < fast_until else min_s
+            if length >= limit or (new_para and length >= limit * 0.6):
                 shots.append(cur)
                 cur = []
         cur.append(s)
@@ -46,7 +50,8 @@ def _visual_rules() -> str:
 
 def run(video: Video, stub: bool = False) -> None:
     tl = video.read_json("timeline.json")
-    shots = group(tl["sentences"], tl["duration"])
+    shots = group(tl["sentences"], tl["duration"],
+                  fast_s=config.FAST_START_SHOT_SECONDS, fast_until=config.FAST_START_SECONDS)
     character = video.brief().get("character") or "none"
     listing = "\n\n".join(f"Shot {s['id']}: {s['text']}" for s in shots)
     text = fill(prompt("shots.md"), VISUAL_RULES=_visual_rules(), CHARACTER=character, SHOTS=listing)

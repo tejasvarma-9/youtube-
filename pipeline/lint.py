@@ -43,21 +43,21 @@ def _numbers(text: str) -> set[str]:
     return out
 
 
-SENTENCE = re.compile(r"(?<=[.!?])\s+")
+ROADMAP = re.compile(r"\bby the end of (?:this|the) video\b|\byou(?:'ll| will) (?:see|learn|understand|find out)\b|\bwe(?:'ll| will) (?:look at|cover|explore|break down|walk through)\b|\bin today'?s video\b", re.I)
 
 
 def _opening(script: str) -> tuple[list[str], list[str]]:
-    """The opening is about the viewer, not the channel: no channel intro, "you" in the first two
-    sentences, and the video's question asked within about 30 seconds (90 words)."""
+    """No channel intro, no roadmap paragraph, and the video's question asked within about
+    30 seconds (90 words). Costco (2026-10-04) gave its answer in the first sentence, then spent
+    about 27 seconds on "by the end of this video..." and lost most viewers in the first minute."""
     name = config.CHANNEL_NAME
     errors, warnings = [], []
     paragraphs = [p for p in script.split("\n\n") if p.strip()]
     body = "\n\n".join(paragraphs[:-1]) if len(paragraphs) > 1 else script
     if name.lower() in " ".join(body.split()[:150]).lower():
         errors.append(f"Opening: don't say the channel name \"{name}\" in the opening. Go straight from the hook into the question; the name belongs only in the final subscribe line.")
-    first_two = " ".join(SENTENCE.split(script.strip())[:2])
-    if not re.search(r"\b(you|your|you're|you've)\b", first_two, re.I):
-        warnings.append("Opening: the first two sentences should be about the viewer (\"you\", \"your\"): something they pay for, use or believe.")
+    for m in ROADMAP.finditer(" ".join(script.split()[:250])):
+        warnings.append(f"Opening: \"{m.group(0)}\" starts a roadmap of what the video will cover. Cut it and go straight into the story.")
     if "?" not in " ".join(script.split()[:90]):
         warnings.append("Opening: ask the video's core question within the first 90 words (about 30 seconds).")
     return errors, warnings

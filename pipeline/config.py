@@ -60,8 +60,13 @@ IMAGE_STYLE_SUFFIX = (
     "16:9 aspect ratio. No photorealism, no 3D, no real logos, no real people."
 )
 # Each image stays on screen for at least this long. Lower = more images = more cost.
-# At 3 videos/week: 10 s is roughly 70 images per video and about $15/month in images.
-MIN_SHOT_SECONDS = float(env("MIN_SHOT_SECONDS", "10"))
+# 8 s after a fast first minute is roughly 85 to 95 images per 10-minute video, about $1.55.
+MIN_SHOT_SECONDS = float(env("MIN_SHOT_SECONDS", "8"))
+# The first minute is where viewers leave, so pictures change faster there: a new picture
+# about every sentence (at least FAST_START_SHOT_SECONDS each) for the first FAST_START_SECONDS.
+# Set FAST_START_SECONDS=0 to turn it off.
+FAST_START_SECONDS = float(env("FAST_START_SECONDS", "60"))
+FAST_START_SHOT_SECONDS = float(env("FAST_START_SHOT_SECONDS", "3"))
 MAX_SHOT_SECONDS = 18.0
 
 # Prices used for the cost line in the review package (USD, checked 2026-10-03).

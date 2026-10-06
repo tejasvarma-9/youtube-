@@ -72,8 +72,8 @@ class LintTests(unittest.TestCase):
         self.assertFalse([w for w in result["warnings"] if w.startswith("Opening:")])
         old_intro = "\n\n".join([hook, "Welcome to Who Pays Who. Today, we find out who pays.", "The middle part.", outro])
         self.assertTrue(any(e.startswith("Opening:") for e in lint_script(old_intro, "")["errors"]))
-        not_about_you = "\n\n".join(["A machine sits in a hallway. It earns money.", question, outro])
-        self.assertTrue(any("you" in w for w in lint_script(not_about_you, "")["warnings"] if w.startswith("Opening:")))
+        roadmap = "\n\n".join([hook, question, "By the end of this video, you'll understand the whole model.", "The middle part.", outro])
+        self.assertTrue(any("roadmap" in w for w in lint_script(roadmap, "")["warnings"]))
         late_question = "\n\n".join([hook, " ".join(["word"] * 100) + ".", question, outro])
         self.assertTrue(any("90 words" in w for w in lint_script(late_question, "")["warnings"]))
         no_outro = "\n\n".join([hook, question, "The middle part."])
@@ -110,6 +110,17 @@ class TimingTests(unittest.TestCase):
         for a, b in zip(shots, shots[1:]):
             self.assertEqual(a["end"], b["start"])
         self.assertTrue(all(s["end"] - s["start"] >= 6 for s in shots))
+
+    def test_fast_start_gives_the_first_minute_more_pictures(self):
+        sents = [{"i": i + 1, "paragraph": i // 4, "text": "x", "start": i * 4.0, "end": i * 4.0 + 3.8} for i in range(45)]
+        slow = group(sents, 181.0, min_s=8)
+        fast = group(sents, 181.0, min_s=8, fast_s=3, fast_until=60)
+        first_minute = lambda shots: [s for s in shots if s["start"] < 60]
+        self.assertEqual(len(first_minute(fast)), 15)  # one picture per 4-second sentence
+        self.assertLess(len(first_minute(slow)), 9)
+        self.assertTrue(all(s["end"] - s["start"] >= 6 for s in fast if s["start"] >= 64))
+        self.assertEqual(fast[-1]["end"], 181.0)
+        self.assertEqual(sum(len(s["sentences"]) for s in fast), 45)
 
     def test_caption_chunks(self):
         chunks = caption_chunks("A vending machine in a busy hospital hallway can quietly earn more than you think.")

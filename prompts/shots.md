@@ -5,12 +5,15 @@ Visual rules (from the voice profile):
 
 Recurring character: {{CHARACTER}}
 
-For each shot, describe one full scene that shows what the narration is saying, readable in 2 seconds:
-- Name the setting, the figures and what they are doing, and the 1 to 3 large labels or price tags drawn into the scene (exact text in quotes, short, all caps).
-- Use numbers from the narration on labels where they help. Never draw a real company logo or a real person: show a generic building or product, and put the company name on a plain sign at most. Never draw another company's name or trademark style on a sign either (for a defunct rental chain, write "VIDEO RENTAL"). The image model garbles small text, so keep every drawn word short and large, never draw receipts, fine print, maps with place names, or tiny chart labels, and when a chart shows percentages use only the figures in the narration.
-- Vary the composition from shot to shot (wide scene, close-up on an object, split comparison, simple chart drawn on a whiteboard).
+For each shot, describe one simple picture that shows the single idea of the narration, readable in one second:
+- One idea per picture: one or two figures and one object or symbol, with lots of empty space. No crowded scenes, shelves full of products or busy backgrounds.
+- Give every figure a clear facial expression and pose that acts out the line (confused with a question mark, surprised, worried, a lightbulb moment, pointing straight at the viewer when the line says "you").
+- No words, letters or numbers anywhere in the picture: no labels, signs, price tags, chart labels or company names. Show ideas with icons, arrows, thought bubbles, coins, stacks of cash, a shopping cart, a membership card with no writing, or a before/after split.
+- Never draw a real company logo, a real product design, a real store front or a real person. Use generic stand-ins (a plain warehouse, a plain red streaming screen).
+- Early shots (the first minute) change every sentence, so keep them especially simple and give each one a different composition from the last.
+- Vary the composition from shot to shot (close-up on a face, close-up on an object, figure and object, split comparison, thought bubble).
 - If the recurring character appears, describe them using exactly the locked description, word for word.
-- Write 40 to 80 words per scene. Don't mention style; a style suffix is added later.
+- Write 30 to 60 words per scene. Don't mention style; a style suffix is added later.
 
 If the recurring character is "none" but the script clearly introduces one (for example "meet Bob"), write a locked one-sentence description for them and use it.
 
