@@ -160,8 +160,11 @@ def end_card_image(path) -> None:
     from .s8_thumbnail import _font
 
     W, H = config.WIDTH, config.HEIGHT
-    logo = Image.open(config.LOGO).convert("RGB")
+    raw = Image.open(config.LOGO).convert("RGBA")
+    logo = Image.new("RGB", raw.size, (255, 255, 255))
+    logo.paste(raw, mask=raw.split()[3])  # transparent corners become white
     bg = logo.getpixel((2, 2))
+    light = (0.299 * bg[0] + 0.587 * bg[1] + 0.114 * bg[2]) > 140
     card = Image.new("RGB", (W, H), bg)
     size = int(H * 0.5)
     card.paste(logo.resize((size, size), Image.LANCZOS), ((W - size) // 2, int(H * 0.12)))
@@ -169,7 +172,8 @@ def end_card_image(path) -> None:
     font = _font(84)
     name = config.CHANNEL_NAME
     tw = draw.textlength(name, font=font)
-    draw.text(((W - tw) / 2, int(H * 0.12) + size + 30), name, font=font, fill=(255, 255, 255))
+    draw.text(((W - tw) / 2, int(H * 0.12) + size + 30), name, font=font,
+              fill=(16, 27, 45) if light else (255, 255, 255))
     card.save(path)
 
 
