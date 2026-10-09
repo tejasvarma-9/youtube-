@@ -307,6 +307,24 @@ class QualityCheckTests(unittest.TestCase):
         self.assertEqual(len(r["missing"]), 1)
         self.assertIn("single year for decades", r["missing"][0]["text"])
 
+    def test_script_rules_are_rechecked(self):
+        from pipeline.s10_qc import _script_rules
+        hook = "You walk past a vending machine every day. It can out-earn the gift shop."
+        q = "So who actually gets paid when you press the button?"
+        outro = "If this was useful, like the video and subscribe to Who Pays Who."
+        with tempfile.TemporaryDirectory() as d:
+            v = mock.Mock()
+            v.read_text = lambda name: Path(d, name).read_text()
+            Path(d, "script.txt").write_text("\n\n".join([hook, q + " Welcome to Who Pays Who, where we follow the money.", "Middle.", outro]))
+            failures = []
+            _script_rules(v, failures)
+            self.assertEqual(failures, [])
+            Path(d, "script.txt").write_text("\n\n".join([hook, q, "Middle.", "The end."]))
+            failures = []
+            _script_rules(v, failures)
+            self.assertTrue(any("welcome line" in f for f in failures))
+            self.assertTrue(any("Outro" in f for f in failures))
+
     def test_srt_parsing(self):
         from pipeline.s10_qc import _srt_cues
         cues = _srt_cues("1\n00:00:01,500 --> 00:00:03,000\nHello there\n\n2\n00:01:02,250 --> 00:01:04,000\nSecond line\n")

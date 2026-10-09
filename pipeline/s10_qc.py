@@ -35,6 +35,13 @@ SILENCE_MAX_S = 2.5
 SHEET_COLS, SHEET_ROWS, THUMB_W = 4, 3, 480
 
 
+def _script_rules(video: Video, failures: list) -> None:
+    """The welcome line and the like-and-subscribe close are required in every video, even after hand edits."""
+    from .lint import _opening, _outro
+    script = video.read_text("script.txt")
+    failures += [f"Script: {e}" for e in _opening(script)[0] + _outro(script)]
+
+
 def run(video: Video, stub: bool = False) -> dict:
     failures, warnings, checks = [], [], {}
     if stub or video.read_json("timeline.json").get("voice") == "stub":
@@ -43,6 +50,7 @@ def run(video: Video, stub: bool = False) -> dict:
         return result
 
     _technical(video, failures, warnings, checks)
+    _script_rules(video, failures)
     _captions(video, failures, warnings, checks)
     _review_with_claude(video, failures, warnings, checks)
     meta = video.read_json("metadata.json")
@@ -97,6 +105,8 @@ def _technical(video: Video, failures: list, warnings: list, checks: dict) -> No
     asm = video.path("assembly.json")
     end_s = (json.loads(asm.read_text()).get("end_card_seconds", 0) if asm.exists() else 0) or 0
     checks["end_card_seconds"] = end_s
+    if not end_s:
+        failures.append(f"No logo end card. Every video ends on it: run python -m pipeline assemble {video.slug}")
     if abs(dur - tl["duration"] - end_s) > 1.0:
         failures.append(f"Video is {dur:.1f}s but the voiceover is {tl['duration']:.1f}s"
                         f"{f' plus a {end_s:.0f}s end card' if end_s else ''}; something was cut or padded.")

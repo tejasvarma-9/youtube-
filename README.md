@@ -305,7 +305,7 @@ The image count is the cost lever. In the first minute, where most viewers decid
 | `MIN_SHOT_SECONDS` | `8` | Lower means more images and more cost |
 | `FAST_START_SECONDS` | `60` | How long the opening gets faster pictures; `0` turns it off |
 | `FAST_START_SHOT_SECONDS` | `3` | Shortest picture in the opening (in practice about one per sentence) |
-| `END_CARD_SECONDS` | `6` | Logo end card after the voice ends (from `assets/brand/logo.png`); `0` turns it off. Put the YouTube end screen on top of it |
+| `END_CARD_SECONDS` | `6` | Logo end card after the voice ends (from `assets/brand/logo.png`). Every video has one, at least 3 s; the quality check fails without it. Put the YouTube end screen on top of it |
 | `CLAUDE_MODEL` | Claude Code's default | |
 
 ## Tests

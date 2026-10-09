@@ -280,7 +280,9 @@ def run(video: Video, stub: bool = False, captions: bool = True) -> None:
             if n % 10 == 0 or n == len(todo):
                 log(f"    clips {n}/{len(todo)}")
 
-    end_s = config.END_CARD_SECONDS if config.LOGO.exists() else 0
+    if not config.LOGO.exists():
+        raise StageError(f"The channel logo is missing ({config.LOGO}). Every video ends on the logo card, so add it first.")
+    end_s = config.END_CARD_SECONDS
     if end_s > 0:
         logo = config.LOGO.stat()
         key = hashlib.sha1(f"{CLIP_VERSION}|{logo.st_size}|{logo.st_mtime_ns}|{end_s}|{config.CHANNEL_NAME}".encode()).hexdigest()[:10]
