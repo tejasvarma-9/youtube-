@@ -94,8 +94,12 @@ def _technical(video: Video, failures: list, warnings: list, checks: dict) -> No
     checks["duration"] = round(dur, 2)
     if (w, h) != (config.WIDTH, config.HEIGHT):
         failures.append(f"Video is {w}x{h}, not {config.WIDTH}x{config.HEIGHT}.")
-    if abs(dur - tl["duration"]) > 1.0:
-        failures.append(f"Video is {dur:.1f}s but the voiceover is {tl['duration']:.1f}s; something was cut or padded.")
+    asm = video.path("assembly.json")
+    end_s = (json.loads(asm.read_text()).get("end_card_seconds", 0) if asm.exists() else 0) or 0
+    checks["end_card_seconds"] = end_s
+    if abs(dur - tl["duration"] - end_s) > 1.0:
+        failures.append(f"Video is {dur:.1f}s but the voiceover is {tl['duration']:.1f}s"
+                        f"{f' plus a {end_s:.0f}s end card' if end_s else ''}; something was cut or padded.")
 
     out = _ff(["-i", mp4, "-vn", "-af", "loudnorm=print_format=json", "-f", "null", "-"])
     m = re.search(r"\{[^{}]*\"input_i\"[^{}]*\}", out, re.S)
@@ -116,7 +120,7 @@ def _technical(video: Video, failures: list, warnings: list, checks: dict) -> No
     silences = []
     for start, length in re.findall(r"silence_end: ([\d.]+) \| silence_duration: ([\d.]+)", out):
         s = float(start) - float(length)
-        if s < dur - 1.5:  # the deliberate second of quiet at the end is fine
+        if s < dur - end_s - 1.5:  # the quiet at the end, and the silent logo end card, are fine
             silences.append(f"{fmt_ts(s)} ({float(length):.1f}s)")
     checks["long_silences"] = silences
     if silences:

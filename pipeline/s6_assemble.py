@@ -154,6 +154,34 @@ def build_clip(img, out, frames: int, motion: int) -> None:
             proc.kill()
 
 
+def end_card_image(path) -> None:
+    """The channel logo centred on its own background colour, with the channel name under it."""
+    from PIL import Image, ImageDraw
+    from .s8_thumbnail import _font
+
+    W, H = config.WIDTH, config.HEIGHT
+    logo = Image.open(config.LOGO).convert("RGB")
+    bg = logo.getpixel((2, 2))
+    card = Image.new("RGB", (W, H), bg)
+    size = int(H * 0.5)
+    card.paste(logo.resize((size, size), Image.LANCZOS), ((W - size) // 2, int(H * 0.12)))
+    draw = ImageDraw.Draw(card)
+    font = _font(84)
+    name = config.CHANNEL_NAME
+    tw = draw.textlength(name, font=font)
+    draw.text(((W - tw) / 2, int(H * 0.12) + size + 30), name, font=font, fill=(255, 255, 255))
+    card.save(path)
+
+
+def build_end_card(out, seconds: float) -> None:
+    """A still clip in the same format as the shot clips, so it joins them cleanly."""
+    png = out.with_suffix(".png")
+    end_card_image(png)
+    sh([find_ffmpeg()[0], "-y", "-v", "error", "-loop", "1", "-framerate", str(config.FPS), "-i", str(png),
+        "-frames:v", str(max(1, round(seconds * config.FPS))), "-c:v", "libx264", "-preset", "veryfast",
+        "-crf", "18", "-pix_fmt", "yuv420p", str(out)])
+
+
 def caption_chunks(text: str, max_chars: int = 38) -> list[str]:
     words, chunks, cur = text.split(), [], ""
     for w in words:
@@ -248,6 +276,17 @@ def run(video: Video, stub: bool = False, captions: bool = True) -> None:
             if n % 10 == 0 or n == len(todo):
                 log(f"    clips {n}/{len(todo)}")
 
+    end_s = config.END_CARD_SECONDS if config.LOGO.exists() else 0
+    if end_s > 0:
+        logo = config.LOGO.stat()
+        key = hashlib.sha1(f"{CLIP_VERSION}|{logo.st_size}|{logo.st_mtime_ns}|{end_s}|{config.CHANNEL_NAME}".encode()).hexdigest()[:10]
+        card = video.path("clips", f"end_card_{key}.mp4")
+        if not card.exists():
+            for old in card.parent.glob("end_card_*"):
+                old.unlink()
+            build_end_card(card, end_s)
+        clips.append(card)
+
     concat = video.path("clips", "list.txt")
     concat.write_text("".join(f"file '{c.name}'\n" for c in clips))
     srt = video.path("captions.srt")
@@ -259,11 +298,11 @@ def run(video: Video, stub: bool = False, captions: bool = True) -> None:
     cmd += ["-map", "0:v", "-map", "1:a", "-c:v", "libx264", "-preset", "medium", "-crf", "20",
             "-pix_fmt", "yuv420p",
             # Level the voice to YouTube's playback loudness (about -14 LUFS), peaks under -1.5 dB.
-            "-af", "loudnorm=I=-14:TP=-1.5:LRA=11", "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-shortest",
+            "-af", "loudnorm=I=-14:TP=-1.5:LRA=11" + (",apad" if end_s > 0 else ""), "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-shortest",
             "-movflags", "+faststart", "video.mp4"]
     log("  assembling video.mp4 ...")
     sh(cmd, cwd=video.dir)
-    video.write_json("assembly.json", {"ffmpeg": ffmpeg, "burned_captions": captions})
+    video.write_json("assembly.json", {"ffmpeg": ffmpeg, "burned_captions": captions, "end_card_seconds": end_s})
     log(f"  video.mp4 written ({tl['duration'] / 60:.1f} minutes)")
 
 

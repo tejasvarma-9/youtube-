@@ -47,15 +47,33 @@ ROADMAP = re.compile(r"\bby the end of (?:this|the) video\b|\byou(?:'ll| will) (
 
 
 def _opening(script: str) -> tuple[list[str], list[str]]:
-    """No channel intro, no roadmap paragraph, and the video's question asked within about
-    30 seconds (90 words). Costco (2026-10-04) gave its answer in the first sentence, then spent
-    about 27 seconds on "by the end of this video..." and lost most viewers in the first minute."""
+    """Hook first, then the question, then ONE short welcome line naming the channel; no roadmap.
+    Costco (2026-10-04) gave its answer in the first sentence, then spent about 27 seconds on
+    "by the end of this video..." and lost most viewers in the first minute. Tejas asked
+    (2026-10-09) for a welcome line in every video, so it is required, but only after the
+    hook and question have done their job."""
     name = config.CHANNEL_NAME
     errors, warnings = [], []
     paragraphs = [p for p in script.split("\n\n") if p.strip()]
     body = "\n\n".join(paragraphs[:-1]) if len(paragraphs) > 1 else script
-    if name.lower() in " ".join(body.split()[:150]).lower():
-        errors.append(f"Opening: don't say the channel name \"{name}\" in the opening. Go straight from the hook into the question; the name belongs only in the final subscribe line.")
+    flat = " ".join(body.split())
+    sentences = re.split(r"(?<=[.!?])\s+", flat)
+    named = [i for i, s in enumerate(sentences) if name.lower() in s.lower()]
+    first_q = next((i for i, s in enumerate(sentences) if s.rstrip().endswith("?")), None)
+    head = " ".join(flat.split()[:150]).lower()
+    if not named or name.lower() not in head:
+        errors.append(f"Opening: right after the opening question, add one short welcome line that names the channel, "
+                      f"like \"Welcome to {name}, where we follow the money behind everyday things.\"")
+    else:
+        if first_q is None or named[0] <= first_q:
+            errors.append(f"Opening: the welcome line naming \"{name}\" comes after the hook and the question, never before them.")
+        if len(named) > 1:
+            errors.append(f"Opening: say \"{name}\" once in the welcome line; after that, only in the final subscribe line.")
+        welcome = sentences[named[0]]
+        if len(welcome.split()) > 15:
+            warnings.append("Opening: keep the welcome line to one short sentence (15 words or fewer), then go straight back into the story.")
+        if re.search(r"\bsubscribe\b", welcome, re.I):
+            errors.append("Opening: the welcome line doesn't ask for the subscribe; that stays in the final sentence.")
     for m in ROADMAP.finditer(" ".join(script.split()[:250])):
         warnings.append(f"Opening: \"{m.group(0)}\" starts a roadmap of what the video will cover. Cut it and go straight into the story.")
     if "?" not in " ".join(script.split()[:90]):

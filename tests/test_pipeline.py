@@ -3,7 +3,10 @@
 import base64
 import json
 import shutil
+import subprocess
+import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 
 from pipeline import cli, config, s3_voiceover, s6_assemble
@@ -69,17 +72,24 @@ class LintTests(unittest.TestCase):
         hook = "You walk past a vending machine every day. It can out-earn the gift shop next to it."
         question = "So who actually gets paid when you press the button?"
         outro = "If this was useful, like the video and subscribe to Who Pays Who."
-        good = "\n\n".join([hook, question, "The middle part.", outro])
+        welcome = "Welcome to Who Pays Who, where we follow the money."
+        good = "\n\n".join([hook, question + " " + welcome, "The middle part.", outro])
         result = lint_script(good, "")
         self.assertEqual(result["errors"], [])
         self.assertFalse([w for w in result["warnings"] if w.startswith("Opening:")])
         old_intro = "\n\n".join([hook, "Welcome to Who Pays Who. Today, we find out who pays.", "The middle part.", outro])
         self.assertTrue(any(e.startswith("Opening:") for e in lint_script(old_intro, "")["errors"]))
+        no_welcome = "\n\n".join([hook, question, "The middle part.", outro])
+        self.assertTrue(any("welcome line" in e for e in lint_script(no_welcome, "")["errors"]))
+        twice = "\n\n".join([hook, question + " " + welcome, "Here at Who Pays Who we love fees.", outro])
+        self.assertTrue(any("once" in e for e in lint_script(twice, "")["errors"]))
+        long_welcome = "\n\n".join([hook, question + " Welcome to Who Pays Who, the channel where every single week we follow the money behind everything.", "The middle part.", outro])
+        self.assertTrue(any("15 words" in w for w in lint_script(long_welcome, "")["warnings"]))
         roadmap = "\n\n".join([hook, question, "By the end of this video, you'll understand the whole model.", "The middle part.", outro])
         self.assertTrue(any("roadmap" in w for w in lint_script(roadmap, "")["warnings"]))
         late_question = "\n\n".join([hook, " ".join(["word"] * 100) + ".", question, outro])
         self.assertTrue(any("90 words" in w for w in lint_script(late_question, "")["warnings"]))
-        no_outro = "\n\n".join([hook, question, "The middle part."])
+        no_outro = "\n\n".join([hook, question + " " + welcome, "The middle part."])
         self.assertTrue(any(e.startswith("Outro:") for e in lint_script(no_outro, "")["errors"]))
         middle = "\n\n".join([hook, question, "Subscribe to Who Pays Who now.", "The end.", outro])
         self.assertTrue(any("middle" in e for e in lint_script(middle, "")["errors"]))
@@ -371,6 +381,23 @@ class FfmpegDetectionTests(unittest.TestCase):
 
     def test_none_usable(self):
         self.assertEqual(self._find({"/usr/bin/ffmpeg": ""}), ("", False))
+
+
+class EndCardTests(unittest.TestCase):
+    @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "needs ffmpeg")
+    def test_end_card_matches_the_shot_clips(self):
+        from pipeline import s6_assemble
+        with tempfile.TemporaryDirectory() as d:
+            out = Path(d) / "end_card.mp4"
+            s6_assemble.build_end_card(out, 2)
+            info = json.loads(subprocess.run(
+                ["ffprobe", "-v", "error", "-show_entries", "stream=width,height,r_frame_rate,pix_fmt:format=duration",
+                 "-of", "json", str(out)], capture_output=True, text=True).stdout)
+            s = info["streams"][0]
+            self.assertEqual((s["width"], s["height"]), (config.WIDTH, config.HEIGHT))
+            self.assertEqual(s["r_frame_rate"], f"{config.FPS}/1")
+            self.assertEqual(s["pix_fmt"], "yuv420p")
+            self.assertAlmostEqual(float(info["format"]["duration"]), 2.0, delta=0.1)
 
 
 class StubEndToEnd(unittest.TestCase):

@@ -57,11 +57,15 @@ IMAGE_BATCH_SIZE = 10  # requests per batch job, keeps inline results under 20 M
 IMAGE_STYLE_SUFFIX = (
     "Style: simple 2D hand-drawn explainer illustration, round-headed stick figures, "
     "thick black outlines, flat colors, light shading, white or light gray-blue background, "
-    "16:9 aspect ratio. No photorealism, no 3D, no real logos, no real people."
+    "16:9 aspect ratio. No photorealism, no 3D, no real logos, no real people. "
+    "No text of any kind: no letters, words, numbers, labels, signs, banners or symbols anywhere in the picture; "
+    "papers, scrolls, signs, bags and clothing stay plain and blank."
 )
 # Each image stays on screen for at least this long. Lower = more images = more cost.
 # 8 s after a fast first minute is roughly 85 to 95 images per 10-minute video, about $1.55.
 MIN_SHOT_SECONDS = float(env("MIN_SHOT_SECONDS", "8"))
+# Logo end card after the voice ends (seconds). 0 turns it off. YouTube end-screen elements sit on top of it.
+END_CARD_SECONDS = float(env("END_CARD_SECONDS", "6"))
 # The first minute is where viewers leave, so pictures change faster there: a new picture
 # about every sentence (at least FAST_START_SHOT_SECONDS each) for the first FAST_START_SECONDS.
 # Set FAST_START_SECONDS=0 to turn it off.

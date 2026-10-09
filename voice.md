@@ -21,7 +21,7 @@ Every prompt in this pipeline includes this file. Change the channel's voice her
 **Three hooks hold the viewer: start, middle and end.** Every script has all three.
 
 1. **Start hook: the puzzle, not the answer** (first two or three sentences). Lead with something the viewer pays for or uses and a surprising number or contradiction about it ("Membership fees are less than 2 cents of every dollar Costco takes in."). Do NOT give the video's answer here. The hook creates the question; the payoff comes later.
-2. **The question, by about 30 seconds** (within the first 90 words): ask the one question the video answers ("So how does a store that barely charges for the card make most of its money from it?"). Then go straight into the story. **No roadmap** ("By the end of this video, you'll understand...", "you'll see...", "we'll look at...") and **no channel intro** (no "Welcome to Who Pays Who", "This is Who Pays Who" or the channel name anywhere except the final subscribe sentence). Reveal the answer to the opening question between about 60 and 90 seconds, then spend the rest of the video on how and why.
+2. **The question, by about 30 seconds** (within the first 90 words): ask the one question the video answers ("So how does a store that barely charges for the card make most of its money from it?"). Then go straight into the story. **Then one short welcome line** (15 words or fewer) that names the channel, like "Welcome to Who Pays Who, where we follow the money behind everyday things." It comes right after the question, never before the hook, and it does not ask for a subscribe. **No roadmap** ("By the end of this video, you'll understand...", "you'll see...", "we'll look at..."). After the welcome line, the channel name appears only in the final subscribe sentence. Reveal the answer to the opening question between about 60 and 90 seconds, then spend the rest of the video on how and why.
 3. **Reframe** what the business really is ("a gym is a subscription business that happens to have dumbbells in it").
 4. **Cost and structure:** what it takes to get in, with real ranges.
 5. **The mechanism:** how the money actually flows, through one named example character or a simple analogy. Compress it into a **one-line model** the viewer can repeat ("monthly dues times members, minus fixed costs").
@@ -60,7 +60,7 @@ Every prompt in this pipeline includes this file. Change the channel's voice her
 - Predict markets, or tell viewers to buy, sell or hold any security, crypto or fund.
 - Promise viewers income ("you will earn"). Profit sections are illustrations ("a mid-size gym can...").
 - Insult or mock real people, or bring in politics.
-- Add a sponsor read, a filler greeting ("hey guys", "welcome back", "in this video"), a channel intro ("Welcome to Who Pays Who"), or a subscribe ask anywhere except the final sentence.
+- Add a sponsor read, a filler greeting ("hey guys", "welcome back", "in this video"), a channel intro before the hook and question, a second mention of the channel name in the body, or a subscribe ask anywhere except the final sentence.
 - Copy phrasing or structure from an existing video, including the reference scripts in "Finance Magical Prompt.pdf".
 - Use "So You Want to Own a ___" as a title. It is another channel's series.
 
