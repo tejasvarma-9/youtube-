@@ -50,7 +50,10 @@ def run(video: Video, stub: bool = False, full: bool = False) -> None:
         scope = ("Check every fact line. Read the whole script for missing claims and policy problems.")
     facts_text = "\n".join(f"{fid} | {f['claim']} | {f['tag']}" for fid, f in to_check.items())
     if to_check or changed:
-        text = fill(prompt("factcheck.md"), SCRIPT=script, FACTS=facts_text or "(none)", SOURCES=sources, SCOPE=scope)
+        b = video.brief()
+        brief = "\n\n".join(x for x in (f"Angle: {b['angle']}" if b.get("angle") else "", b.get("notes") or "") if x)
+        text = fill(prompt("factcheck.md"), SCRIPT=script, FACTS=facts_text or "(none)", SOURCES=sources, SCOPE=scope,
+                    BRIEF=brief or "(no brief was given)")
         answer = llm.ask(text, "factcheck", web=True, stub=stub, context={"facts": facts_text})
         video.path("raw", "factcheck_answer.md").write_text(answer)
         result = extract_json(answer)

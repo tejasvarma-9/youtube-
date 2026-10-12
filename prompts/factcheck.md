@@ -15,11 +15,17 @@ Verdicts:
 - UNSUPPORTED: no source, the source doesn't say it, or the URL fails.
 - WRONG: a source contradicts it. Give the correct figure and the URL.
 
-Also flag policy problems: market predictions, buy/sell/hold advice, promised income, mocking real people, politics. The one-sentence like-and-subscribe ask at the very end, and the channel intro right after the hook, are required by the channel and are not policy problems; a subscribe ask anywhere else is. "Promised income" means telling the viewer they will earn money. Worked example math about how a company or a made-up business earns money is the channel's format and is fine when the script says it is an example.
+6. Read the editor's brief below. Within the SCOPE, flag as a policy problem any sentence that breaks it: a claim the brief says not to make or not to use, a source or topic the brief rules out, a figure the brief limits to a year, group or caveat that the sentence drops, or something the brief says is old, an estimate, a model or unconfirmed that the sentence states as a current, measured fact. In "problem", start with "Breaks the brief:" and name the brief rule. A true number used to make a claim the brief rules out is still a problem.
+
+Also flag policy problems: market predictions, buy/sell/hold advice, promised income, mocking real people, politics. The one-sentence like-and-subscribe ask at the very end (which also asks viewers to suggest the next business in the comments), and the one short welcome line naming the channel right after the opening question, are required by the channel and are not policy problems; a subscribe ask anywhere else is. "Promised income" means telling the viewer they will earn money. Worked example math about how a company or a made-up business earns money is the channel's format and is fine when the script says it is an example.
 
 Missing claims are checkable statements of fact. A sentence the script clearly presents as the channel's own reading ("one way to read this", "it looks like") is not a missing claim. Don't report the same problem twice.
 
 SCOPE: {{SCOPE}}
+
+<brief>
+{{BRIEF}}
+</brief>
 
 <script>
 {{SCRIPT}}

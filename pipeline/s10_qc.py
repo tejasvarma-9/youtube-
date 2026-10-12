@@ -175,6 +175,19 @@ def _srt_cues(text: str) -> list[dict]:
     return cues
 
 
+NUMBER_WORDS = {w: str(n) for n, w in enumerate(
+    "zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen "
+    "seventeen eighteen nineteen".split())}
+NUMBER_WORDS.update({w: str(10 * n) for n, w in enumerate("twenty thirty forty fifty sixty seventy eighty ninety".split(), 2)})
+
+
+def _word_key(w: str) -> str:
+    """One spelling per word, so "four" in the script matches "4" from the speech recognizer
+    (and "5%" matches "five percent")."""
+    k = re.sub(r"[^a-z0-9]", "", w.lower())
+    return NUMBER_WORDS.get(k, k)
+
+
 def caption_drift(cues: list[dict], heard: list[tuple[str, float, float]]) -> dict:
     """Compare each caption line's start with when its first word was heard.
 
@@ -182,8 +195,8 @@ def caption_drift(cues: list[dict], heard: list[tuple[str, float, float]]) -> di
     script words that were never heard.
     """
     words = [(ci, w) for ci, c in enumerate(cues) for w in c["text"].split()]
-    a = [re.sub(r"[^a-z0-9]", "", w.lower()) for _, w in words]
-    b = [re.sub(r"[^a-z0-9]", "", w.lower()) for w, _, _ in heard]
+    a = [_word_key(w) for _, w in words]
+    b = [_word_key(w) for w, _, _ in heard]
     hit = [None] * len(words)
     for blk in difflib.SequenceMatcher(None, a, b, autojunk=False).get_matching_blocks():
         for k in range(blk.size):

@@ -329,6 +329,34 @@ class QualityCheckTests(unittest.TestCase):
             self.assertTrue(any("welcome line" in f for f in failures))
             self.assertTrue(any("Outro" in f for f in failures))
 
+    def test_factcheck_sees_the_brief(self):
+        from pipeline import s2_factcheck
+        from pipeline.common import StageError
+        v = mock.Mock()
+        files = {"script.txt": "A hook. So who pays?", "facts.txt": "F1 | a claim | S1",
+                 "sources.txt": "S1 | A source | https://example.com"}
+        v.read_text = lambda n: files[n]
+        v.read_json = mock.Mock(side_effect=StageError("none yet"))
+        v.brief = lambda: {"topic": "T", "angle": "Two payers", "notes": "Do NOT claim cash buyers pay."}
+        seen = {}
+
+        def fake_ask(text, *a, **k):
+            seen["text"] = text
+            raise RuntimeError("stop here")
+        with mock.patch.object(s2_factcheck.s1_script, "check", return_value={"errors": [], "warnings": []}), \
+             mock.patch.object(s2_factcheck.llm, "ask", side_effect=fake_ask):
+            with self.assertRaises(RuntimeError):
+                s2_factcheck.run(v)
+        self.assertIn("Do NOT claim cash buyers pay.", seen["text"])
+        self.assertIn("Breaks the brief", seen["text"])
+
+    def test_numbers_in_words_match_digits_heard(self):
+        from pipeline.s10_qc import caption_drift
+        cues = [{"start": 0.0, "text": "a reserve of four to five percent of revenue"}]
+        heard = [("a", 0.0, 0.1), ("reserve", 0.1, 0.4), ("of", 0.4, 0.5), ("4", 0.5, 0.7), ("to", 0.7, 0.8),
+                 ("5%", 0.8, 1.2), ("of", 1.2, 1.3), ("revenue", 1.3, 1.8)]
+        self.assertEqual(caption_drift(cues, heard)["missing"], [])
+
     def test_srt_parsing(self):
         from pipeline.s10_qc import _srt_cues
         cues = _srt_cues("1\n00:00:01,500 --> 00:00:03,000\nHello there\n\n2\n00:01:02,250 --> 00:01:04,000\nSecond line\n")
