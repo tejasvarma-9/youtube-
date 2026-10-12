@@ -58,10 +58,11 @@ def _opening(script: str) -> tuple[list[str], list[str]]:
     body = "\n\n".join(paragraphs[:-1]) if len(paragraphs) > 1 else script
     flat = " ".join(body.split())
     sentences = re.split(r"(?<=[.!?])\s+", flat)
-    named = [i for i, s in enumerate(sentences) if name.lower() in s.lower()]
+    name_re = re.compile(r"\b" + re.escape(name) + r"\b", re.I)  # "who pays whom" is not the channel name
+    named = [i for i, s in enumerate(sentences) if name_re.search(s)]
     first_q = next((i for i, s in enumerate(sentences) if s.rstrip().endswith("?")), None)
-    head = " ".join(flat.split()[:150]).lower()
-    if not named or name.lower() not in head:
+    head = " ".join(flat.split()[:150])
+    if not named or not name_re.search(head):
         errors.append(f"Opening: right after the opening question, add one short welcome line that names the channel, "
                       f"like \"Welcome to {name}, where we follow the money behind everyday things.\"")
     else:
