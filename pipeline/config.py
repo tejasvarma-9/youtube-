@@ -97,8 +97,10 @@ UPSCALER_BIN = env("UPSCALER_BIN") or str(ROOT / "tools" / "realesrgan" / "reale
 UPSCALE_MODEL = env("UPSCALE_MODEL", "realesr-animevideov3")
 # Caption timing: a local speech recognizer (faster-whisper) finds when each word is said.
 ALIGN_MODEL = env("ALIGN_MODEL", "base.en")
-TARGET_WORDS = 2200
-WORDS_MIN, WORDS_MAX = 1800, 2500
+# About 10 minutes at the narrator's measured pace (about 180 words a minute).
+TARGET_WORDS = 1800
+WORDS_MIN, WORDS_MAX = 1650, 1950  # about 9 to 11 minutes
+WORDS_HARD_MAX = 2100  # about 11.5 minutes; longer scripts must be cut
 
 DISCLAIMER = (
     "Sources are listed above. Figures marked as estimates are our own calculations "

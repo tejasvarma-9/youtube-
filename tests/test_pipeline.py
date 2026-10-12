@@ -92,6 +92,8 @@ class LintTests(unittest.TestCase):
         no_outro = "\n\n".join([hook, question + " " + welcome, "The middle part."])
         self.assertTrue(any(e.startswith("Outro:") for e in lint_script(no_outro, "")["errors"]))
         middle = "\n\n".join([hook, question, "Subscribe to Who Pays Who now.", "The end.", outro])
+        too_long = "\n\n".join([hook, question + " " + welcome, " ".join(["word"] * 2200) + ".", outro])
+        self.assertTrue(any(e.startswith("Length:") for e in lint_script(too_long, "")["errors"]))
         no_comment_ask = "\n\n".join([hook, question + " " + welcome, "The middle part.", "If this was useful, like the video and subscribe to Who Pays Who."])
         self.assertTrue(any("comments" in e for e in lint_script(no_comment_ask, "")["errors"]))
         self.assertTrue(any("middle" in e for e in lint_script(middle, "")["errors"]))

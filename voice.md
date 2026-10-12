@@ -12,7 +12,7 @@ Every prompt in this pipeline includes this file. Change the channel's voice her
 
 ## Narrator
 
-- One AI narrator for every video: calm, confident, slightly wry American English, around 160 words per minute.
+- One AI narrator for every video: calm, confident, slightly wry American English, around 180 words per minute (measured on the published videos).
 - Speaks to "you" throughout, like a documentary narrator who happens to find this stuff funny.
 - Never clone or imitate a real person's voice.
 
@@ -47,7 +47,7 @@ Every prompt in this pipeline includes this file. Change the channel's voice her
 - Land a new fact, number or story beat every 30 to 90 seconds. Keep sentences short in the first minute: each sentence there gets its own picture.
 - Write clean prose paragraphs only. No headings, bullets, music cues, scene directions or timestamps.
 - Write money and ranges in full, the way they should be spoken: "$2 million to $5 million", never "$2-5M". "Percent" may be written as "%".
-- Target 1,800 to 2,500 words, which is about 11 to 16 minutes.
+- Target about 1,800 words (1,650 to 1,950), which is about 9 to 11 minutes at the narrator's pace. Never over 2,100 words: a long video loses viewers before the payoff. If the story needs more room, cut the weakest section, not the hook or the ending.
 
 ## Facts
 

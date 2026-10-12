@@ -129,8 +129,15 @@ def _hooks(script: str) -> list[str]:
 def lint_script(script: str, facts: str) -> dict:
     errors, warnings = [], []
     words = word_count(script)
-    if words < config.WORDS_MIN * 0.9 or words > config.WORDS_MAX * 1.1:
-        warnings.append(f"Length is {words} words; the target is {config.WORDS_MIN} to {config.WORDS_MAX}.")
+    minutes = words / 180
+    if words > config.WORDS_HARD_MAX:
+        errors.append(f"Length: {words} words is about {minutes:.0f} minutes. Videos stay near 10 minutes "
+                      f"({config.WORDS_MIN} to {config.WORDS_MAX} words); cut the weakest section rather than trimming every paragraph.")
+    elif words > config.WORDS_MAX:
+        warnings.append(f"Length is {words} words (about {minutes:.1f} minutes); the target is {config.WORDS_MIN} to {config.WORDS_MAX}, about 9 to 11 minutes.")
+    elif words < config.WORDS_MIN:
+        warnings.append(f"Length is {words} words (about {minutes:.1f} minutes); the target is {config.WORDS_MIN} to {config.WORDS_MAX}. "
+                        "Under about 8 minutes, YouTube won't place mid-roll ads once the channel is monetized.")
     for pat, why in BANNED:
         for m in re.finditer(pat, script, re.I):
             errors.append(f"Policy: \"{m.group(0)}\" ({why}).")
