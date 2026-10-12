@@ -56,7 +56,7 @@ class LintTests(unittest.TestCase):
     def test_hook_warnings(self):
         filler = " ".join(["plain"] * 60)
         intro = "A hook about you. Who pays for the snacks?"
-        outro = "If this was useful, like the video and subscribe to Who Pays Who."
+        outro = "If this was useful, like the video, subscribe to Who Pays Who, and suggest the next business in the comments."
         flat = "\n\n".join([intro] + [filler + "."] * 6 + ["The end of it.", outro])
         msgs = " ".join(lint_script(flat, "")["warnings"])
         self.assertIn("middle hook", msgs)
@@ -71,7 +71,7 @@ class LintTests(unittest.TestCase):
     def test_opening_and_outro_rules(self):
         hook = "You walk past a vending machine every day. It can out-earn the gift shop next to it."
         question = "So who actually gets paid when you press the button?"
-        outro = "If this was useful, like the video and subscribe to Who Pays Who."
+        outro = "If this was useful, like the video, subscribe to Who Pays Who, and suggest the next business in the comments."
         welcome = "Welcome to Who Pays Who, where we follow the money."
         good = "\n\n".join([hook, question + " " + welcome, "The middle part.", outro])
         result = lint_script(good, "")
@@ -92,6 +92,8 @@ class LintTests(unittest.TestCase):
         no_outro = "\n\n".join([hook, question + " " + welcome, "The middle part."])
         self.assertTrue(any(e.startswith("Outro:") for e in lint_script(no_outro, "")["errors"]))
         middle = "\n\n".join([hook, question, "Subscribe to Who Pays Who now.", "The end.", outro])
+        no_comment_ask = "\n\n".join([hook, question + " " + welcome, "The middle part.", "If this was useful, like the video and subscribe to Who Pays Who."])
+        self.assertTrue(any("comments" in e for e in lint_script(no_comment_ask, "")["errors"]))
         self.assertTrue(any("middle" in e for e in lint_script(middle, "")["errors"]))
 
     def test_years_are_not_figures(self):
@@ -311,7 +313,7 @@ class QualityCheckTests(unittest.TestCase):
         from pipeline.s10_qc import _script_rules
         hook = "You walk past a vending machine every day. It can out-earn the gift shop."
         q = "So who actually gets paid when you press the button?"
-        outro = "If this was useful, like the video and subscribe to Who Pays Who."
+        outro = "If this was useful, like the video, subscribe to Who Pays Who, and suggest the next business in the comments."
         with tempfile.TemporaryDirectory() as d:
             v = mock.Mock()
             v.read_text = lambda name: Path(d, name).read_text()

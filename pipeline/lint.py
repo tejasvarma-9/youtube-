@@ -96,6 +96,8 @@ def _outro(script: str) -> list[str]:
         out.append(f"Outro: the final line must ask viewers to like the video and subscribe to {name}.")
     elif len(re.findall(r"\bsubscribe\b", script, re.I)) > 1:
         out.append("Outro: ask for the subscribe once, not twice.")
+    elif not re.search(r"\bcomments?\b", paragraphs[last], re.I):
+        out.append("Outro: the final sentence also asks viewers to suggest the next business to break down in the comments.")
     return out
 
 

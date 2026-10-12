@@ -30,7 +30,7 @@ Step back for a second. The whole industry sells convenience, yet its profits de
 
 So, who pays whom? You pay Bob. Bob pays the building. And the building, it turns out, was the one holding the valuable thing all along: the hallway you walk past every day.
 
-If this was useful, like the video and subscribe to Who Pays Who for the next breakdown.
+If this was useful, like the video, subscribe to Who Pays Who, and tell me in the comments which business I should break down next.
 """
 
 STUB_FACTS = """\
