@@ -18,7 +18,7 @@ A2. Robinhood in the SEC's words (SEC press release 2020-321, 17 December 2020)
 - Robinhood Financial agreed to pay a $65 million civil penalty, neither admitting nor denying the findings.
 - The SEC found that from 2015 until late 2018 Robinhood made misleading statements and omissions about its largest revenue source, payments from trading firms for routing customer orders; and that its "commission free" marketing hid the costs of its high payment rates.
 - The SEC found Robinhood's inferior trade prices cost customers $34.1 million in aggregate, even after counting the savings from not paying commissions.
-- Say the dates plainly: this covers 2015 to 2019. It is not a statement about Robinhood today.
+- Dates: the SEC's findings cover 2015 to late 2018, plus a website FAQ that ran from October 2018 to June 2019. The release gives no separate period for the $34.1 million. Make clear it is not a statement about Robinhood today.
 A3. How Robinhood described it (Robinhood newsroom post, "Demystifying payment for order flow", 4 March 2021, by Robinhood Securities' President and COO)
 - "To compete with exchanges, market makers offer us rebates." and "Market makers typically give you better prices than exchanges." Attribute both to Robinhood.
 - "we earned an average of $0.0023 per equity share traded in the fourth quarter of 2020." Say this is a 2020 figure.
@@ -43,7 +43,7 @@ A7. Execution-price research (Schwarz, Barber, Huang, Jorion and Odean, "The 'Ac
 - Say plainly that Fidelity was one of the better-ranked brokers in the 2022 working-paper version. Do not rank the other brokers by name; the Olin page's list is inconsistent about how many brokers were tested (six accounts at five brokers).
 
 B. WHAT THE SOURCES DO NOT SAY (the script must be honest about this)
-- No source says what an average retail investor loses per trade today. The only dollar finding about harm is the SEC's $34.1 million for 2015 to 2019 at one broker. The research gives percentages from a test sample, not a bill for the average customer.
+- No source says what an average retail investor loses per trade today. The only dollar finding about harm is the SEC's $34.1 million at one broker, in a case announced in December 2020. The research gives percentages from a test sample, not a bill for the average customer.
 - The academic paper finds price differences between brokers but says payment differences do not explain them. So "the broker's payment makes your price worse" is NOT supported. The supported version: your price depends on who executes your order, brokers differ, and the payment is one of the ways the broker gets paid.
 - Brokers and trading firms say orders typically get a better price than the public quote. We have the brokers' statements (A3, A4) and the market makers' own claim (C) but no independent measurement of how much, today.
 - Schwab and Robinhood report different things: Schwab reports "order flow revenue" as a line; Robinhood reports "transaction-based revenues", which is wider than order flow, and its release does not isolate the payments. Fidelity is private and gives no revenue figure. Do not compare their percentages as if they were the same measure.
