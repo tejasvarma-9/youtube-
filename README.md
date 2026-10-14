@@ -253,6 +253,24 @@ For each video:
 
 To replace a video that is already public, delete it in Studio and upload the new file. The old link stops working, so upload the new one as Private first and make it Public after checking.
 
+## Shorts (optional, from a finished video)
+
+Shorts are a separate command with their own folder. They never touch the full video's files.
+
+```bash
+python -m pipeline shorts <slug>                 # 3 Shorts (choose with --count 2, 3 or 4)
+python -m pipeline shorts <slug> --plan-only     # only choose them, so you can read the plan first
+python -m pipeline shorts <slug> --replan        # choose again
+python -m pipeline shorts <slug> --only 2        # rebuild just Short 2
+```
+
+- **What a Short is:** sentences taken word for word from the approved script, in order, cut from the existing voiceover, over the video's own pictures in a vertical 1080x1920 frame, with big word-by-word captions and a 2.5-second logo card. 20 to 58 seconds each.
+- **Why it's safe:** no new narration is written, so the fact-check carries over. The command refuses to run until the full video's fact-check has passed. Titles and descriptions may only use numbers that are in the Short's own sentences; Claude's choice is checked and sent back once if it breaks a rule.
+- **Cost:** nothing extra. Claude's choice uses your Claude plan; no new voice or pictures are made.
+- **Output:** `out/<slug>/shorts/REVIEW.md` lists each Short with its narration and quality check. Each `short_N/` folder has `short.mp4`, `description.txt` (with sources, disclaimer and #shorts) and `metadata.json` (title, tags).
+- **You don't have to publish them all.** Watch them and pick. If a Short uses a picture the full video's quality check flagged, REVIEW.md says so.
+- **Upload:** Studio, Create, Upload videos, drag in `short.mp4` (YouTube treats a vertical video under 3 minutes as a Short). Title from `metadata.json`, description from `description.txt`, not made for kids, altered content No. Under **Related video**, pick the full video so viewers can tap through to it.
+
 ## Rules to remember
 
 - **Script shape:** a hook about the viewer ("you") with a surprising number, the video's question within about 30 seconds, no channel intro, the video, and one like-and-subscribe sentence naming the channel as the last line. Never ask for the subscribe in the middle.

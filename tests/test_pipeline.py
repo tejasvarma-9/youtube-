@@ -512,6 +512,28 @@ class StubEndToEnd(unittest.TestCase):
             f.write(b"0")
         self.assertEqual(cli.main(["approve", self.slug, "--force"]), 1)
 
+    def test_shorts_stub(self):
+        self.assertEqual(cli.main(["--stub", "new", "How vending machines make money", "--slug", self.slug, "--run"]), 0)
+        d = config.OUT / self.slug
+        self.assertEqual(cli.main(["--stub", "shorts", self.slug, "--count", "2"]), 0)
+        plan = json.loads((d / "shorts" / "plan.json").read_text())
+        self.assertEqual(len(plan["shorts"]), 2)
+        for n in (1, 2):
+            sd = d / "shorts" / f"short_{n}"
+            for name in ("short.mp4", "captions.srt", "metadata.json", "description.txt", "qc.json"):
+                self.assertTrue((sd / name).exists(), name)
+            self.assertIn("#shorts", (sd / "description.txt").read_text())
+            self.assertIn("Not financial", (sd / "description.txt").read_text())
+            probe = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height",
+                                    "-of", "csv=p=0", str(sd / "short.mp4")], capture_output=True, text=True).stdout.strip()
+            self.assertEqual(probe, "1080,1920")
+        self.assertTrue((d / "shorts" / "REVIEW.md").exists())
+        # A fact-check that has not passed blocks Shorts.
+        fc = json.loads((d / "factcheck.json").read_text())
+        fc["passed"] = False
+        (d / "factcheck.json").write_text(json.dumps(fc))
+        self.assertEqual(cli.main(["--stub", "shorts", self.slug]), 1)
+
     def test_placeholder_topics_are_refused(self):
         self.assertEqual(cli.main(["--stub", "auto", "How X makes money", "--angle", "...", "--slug", self.slug]), 1)
         self.assertFalse((config.OUT / self.slug).exists())
@@ -705,6 +727,39 @@ class StubEndToEnd(unittest.TestCase):
         self.assertFalse(json.loads((d / "assembly.json").read_text())["burned_captions"])
         self.assertTrue((d / "captions.srt").exists())
         self.assertIn("no burned-in captions", (d / "review" / "REVIEW.md").read_text())
+
+
+
+class ShortsPlanning(unittest.TestCase):
+    def rows(self):
+        text = ["How much does it cost?", "Robinhood earned $776 million in 2026.", "But who paid?", "Welcome to Who Pays Who.",
+                "The answer is three places.", "Fees.", "And that is it.", "Like and subscribe."]
+        return [{"i": k + 1, "paragraph": 0 if k < 6 else 1 + (k - 6), "text": t, "start": k * 6.0, "end": k * 6.0 + 5.5}
+                for k, t in enumerate(text)]
+
+    def test_blocked_and_validation(self):
+        from pipeline import s11_shorts as sh
+        rows = self.rows()
+        self.assertIn(4, sh.blocked_sentences(rows))
+        self.assertIn(8, sh.blocked_sentences(rows))
+        good = {"shorts": [{"title": "Who paid $776 million?", "sentences": [1, 2], "description_intro": "A look at the money.", "tags": ["a"]},
+                           {"title": "Three places", "sentences": [5, 6], "description_intro": "Where it comes from.", "tags": ["b"]}]}
+        items, problems = sh.validate_plan(good, rows, 2, stub=True)
+        self.assertEqual(problems, [], problems)
+        bad = {"shorts": [{"title": "$999 million", "sentences": [3, 4], "description_intro": "x", "tags": []},
+                          {"title": "Reuse", "sentences": [2, 8], "description_intro": "y", "tags": []}]}
+        _, problems = sh.validate_plan(bad, rows, 2, stub=True)
+        joined = " ".join(problems)
+        self.assertIn("blocked", joined)
+        self.assertIn("leans on what came before", joined)
+        self.assertIn("not in the Short's own sentences", joined)
+
+    def test_caption_chunks(self):
+        from pipeline import s11_shorts as sh
+        for ch in sh.chunk_words("Robinhood earned seven hundred seventy-six million dollars in one quarter alone"):
+            self.assertLessEqual(len(ch), 3)
+        flat = [k for ch in sh.chunk_words("a b c d e f g") for k in ch]
+        self.assertEqual(flat, list(range(7)))
 
 
 if __name__ == "__main__":

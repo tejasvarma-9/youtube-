@@ -8,7 +8,7 @@ import re
 import shutil
 import sys
 
-from . import (align, config, s1_script, s2_factcheck, s3_voiceover, s4_shots, s5_images, s6_assemble, s7_metadata,
+from . import (align, config, s1_script, s2_factcheck, s3_voiceover, s4_shots, s5_images, s6_assemble, s7_metadata, s11_shorts,
                s8_thumbnail, s9_review, s10_qc)
 from .common import StageError, Video, log, slugify
 
@@ -228,6 +228,12 @@ def main(argv=None) -> int:
     ap = sub.add_parser("approve", help="record Tejas's approval of the exact files in the review package")
     ap.add_argument("slug")
     ap.add_argument("--publish-at", default="", help='planned publish time, e.g. "2026-10-10T15:00:00Z"')
+    sh = sub.add_parser("shorts", help="2 to 4 vertical Shorts cut from a finished video (own folder: out/<slug>/shorts/)")
+    sh.add_argument("slug")
+    sh.add_argument("--count", type=int, default=config.SHORTS_COUNT, help="how many Shorts to choose, 2 to 4")
+    sh.add_argument("--only", type=int, help="build only this Short number")
+    sh.add_argument("--plan-only", action="store_true", help="choose the Shorts and stop, so you can read the plan first")
+    sh.add_argument("--replan", action="store_true", help="choose the Shorts again, even if a plan exists")
     sub.add_parser("status", help="list videos and which stages are done")
     sub.add_parser("doctor", help="check that this Mac is set up")
     vt = sub.add_parser("voice-test", help="a short sample in several voices to choose from (about 1 cent)")
@@ -269,6 +275,9 @@ def main(argv=None) -> int:
             s1_script.check(Video(a.slug))
         elif a.cmd == "approve":
             s9_review.approve(Video(a.slug), a.publish_at, force=a.force)
+        elif a.cmd == "shorts":
+            s11_shorts.run(Video(a.slug), count=a.count, only=a.only, plan_only=a.plan_only, replan=a.replan,
+                           stub=a.stub, force=a.force)
         elif a.cmd == "status":
             cmd_status()
         elif a.cmd == "doctor":

@@ -63,6 +63,23 @@ def llm_answer(kind: str, ctx: dict) -> str:
             first = shot["text"].split(".")[0][:90]
             shots.append({"id": shot["id"], "scene": f"A stick figure in an office hallway next to a vending machine, with a big sign reading \"{first.upper()}\"."})
         return "===JSON===\n" + json.dumps({"character_description": "Bob: a round-headed stick figure with a green cap and a clipboard.", "shots": shots}) + "\n===END==="
+    if kind == "shorts":
+        import re as _re
+        bad = _re.compile(r"^\s*(and|but|so|then|now|that|this|it|they|which|these|those|also)\b", _re.I)
+        blocked = set(ctx.get("blocked", []))
+        free = [s for s in ctx.get("sentences", []) if s["i"] not in blocked]
+        shorts, k = [], 0
+        for n in range(ctx.get("count", 3)):
+            while k < len(free) and bad.match(free[k]["text"]):
+                k += 1
+            ids, secs = [], 0.0
+            while k < len(free) and secs < 4.0:
+                ids.append(free[k]["i"])
+                secs += free[k]["seconds"]
+                k += 1
+            shorts.append({"title": f"Stub short {n + 1}", "sentences": ids, "description_intro": "A stub clip from the video.",
+                           "tags": ["stub", "test", "shorts"], "why": "stub"})
+        return "===JSON===\n" + json.dumps({"shorts": shorts}) + "\n===END==="
     if kind == "metadata":
         n = ctx.get("sentence_count", 10)
         step = max(1, n // 5)

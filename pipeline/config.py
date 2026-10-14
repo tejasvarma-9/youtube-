@@ -102,6 +102,12 @@ TARGET_WORDS = 1800
 WORDS_MIN, WORDS_MAX = 1650, 1950  # about 9 to 11 minutes
 WORDS_HARD_MAX = 2100  # about 11.5 minutes; longer scripts must be cut
 
+# Shorts: vertical clips cut from a finished video (python -m pipeline shorts <slug>).
+SHORT_WIDTH, SHORT_HEIGHT = 1080, 1920
+SHORT_MIN_S, SHORT_MAX_S = 20.0, 58.0   # YouTube allows up to 3 minutes; under a minute holds attention best
+SHORT_END_CARD_S = 2.5
+SHORTS_COUNT = 3                         # per video; the command accepts 2 to 4
+
 DISCLAIMER = (
     "Sources are listed above. Figures marked as estimates are our own calculations "
     "or industry estimates.\n"
