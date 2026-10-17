@@ -529,6 +529,10 @@ class StubEndToEnd(unittest.TestCase):
             self.assertEqual(probe, "1080,1920")
         self.assertIn("On screen:", (d / "shorts" / "REVIEW.md").read_text())
         self.assertTrue(all(it["review"]["verdict"] == "PASS" for it in plan["shorts"]))
+        self.assertTrue(all(it["opening_question"].endswith("?") for it in plan["shorts"]))
+        asm = json.loads((d / "shorts" / "short_1" / "assembly.json").read_text())
+        self.assertGreater(asm["question_seconds"], 0.5)
+        self.assertIn("Stub", (d / "shorts" / "short_1" / "captions.srt").read_text().split("\n")[2])
         # A fact-check that has not passed blocks Shorts.
         fc = json.loads((d / "factcheck.json").read_text())
         fc["passed"] = False
@@ -756,6 +760,10 @@ class ShortsPlanning(unittest.TestCase):
         self.assertIn("not in the Short's own sentences", joined)
         self.assertIn("hook_text must be", joined)
         self.assertIn("just repeats the narration", joined)
+        q = sh.written_problems("S", "Hilton kept running the hotel.", "Why keep it?", "T", "D", "Why did they pay $5 billion?")
+        self.assertIn("figure(s)", " ".join(q))
+        self.assertEqual(sh.written_problems("S", "Hilton kept running the hotel.", "Why keep it?", "T", "D", "Who runs it?"), [])
+        self.assertTrue(sh.written_problems("S", "x", "Why keep it?", "T", "D", "No question mark"))
 
     def test_review_applies_fixes_and_blocks_rejects(self):
         from pipeline import s11_shorts as sh
@@ -782,6 +790,11 @@ class ShortsPlanning(unittest.TestCase):
             # Unchanged lines are not sent again; a hand edit is.
             with mock.patch.object(sh.llm, "ask", side_effect=AssertionError("should not be asked")):
                 sh.review(Video("zz-test-review"), plan)
+            # A rejected Short is not asked again while its sentences are unchanged, even if its lines are edited.
+            plan["shorts"][1]["title"] = "Edited too"
+            with mock.patch.object(sh.llm, "ask", side_effect=AssertionError("should not be asked")):
+                sh.review(Video("zz-test-review"), plan)
+            self.assertEqual(plan["shorts"][1]["review"]["verdict"], "REJECT")
             plan["shorts"][0]["title"] = "Edited by hand"
             with mock.patch.object(sh.llm, "ask", return_value='===JSON===\n{"reviews": [{"short": 1, "verdict": "PASS", "problems": []}]}\n===END===') as ask:
                 sh.review(Video("zz-test-review"), plan)

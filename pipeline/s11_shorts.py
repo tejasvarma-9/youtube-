@@ -43,6 +43,9 @@ HOLD_S = 5.0              # the same picture is re-framed (punch in or pan) at l
 FG_TOP = 420              # top edge of the picture inside the 1080x1920 frame
 HOOK_TOP, HOOK_BOTTOM = 140, 395   # the on-screen hook text sits here, below the Shorts app's top bar
 HOOK_MAX_CHARS = 42
+QUESTION_MAX_WORDS = 14
+QUESTION_GAP_S = 0.30     # pause between the spoken opening question and the first sentence
+QUESTION_FIELDS = ("opening_question", "hook_text", "title", "description_intro")
 # Captions sit above the Shorts app's title and buttons (bottom ~400 px). libass scales its font units to
 # the video height (units of 1/288), so 11 is about 73 px and MarginV 110 puts the line's bottom near y=1185, just under the picture.
 CAPTION_STYLE = (
@@ -121,16 +124,27 @@ def validate_plan(plan: dict, sentences: list[dict], count: int, stub: bool = Fa
         title = str(sh_.get("title", "")).strip()
         intro = str(sh_.get("description_intro", "")).strip()
         hook = " ".join(str(sh_.get("hook_text", "")).split())
-        problems += written_problems(label, text, hook, title, intro)
+        question = " ".join(str(sh_["opening_question"]).split()) if "opening_question" in sh_ else None
+        problems += written_problems(label, text, hook, title, intro, question)
         tags = [str(t).strip() for t in sh_.get("tags", []) if str(t).strip()][:8]
-        items.append({"hook_text": hook, "title": title, "sentences": ids, "description_intro": intro, "tags": tags,
+        items.append({**({"opening_question": question} if question is not None else {}), "hook_text": hook, "title": title, "sentences": ids, "description_intro": intro, "tags": tags,
                       "why": str(sh_.get("why", "")).strip(), "seconds": round(total, 1), "text": text})
     return items, problems
 
 
-def written_problems(label: str, text: str, hook: str, title: str, intro: str) -> list[str]:
-    """Mechanical rules for the lines written for a Short (the review step judges the rest)."""
+def written_problems(label: str, text: str, hook: str, title: str, intro: str, question: str | None = None) -> list[str]:
+    """Mechanical rules for the lines written for a Short (the review step judges the rest).
+    question=None means the Short has no spoken opening question (yet); "" means it is missing."""
     problems = []
+    if question is not None:
+        words = question.split()
+        if not words or len(words) > QUESTION_MAX_WORDS or not question.endswith("?") or ODD_CHARS.search(question):
+            problems.append(f"{label}: opening_question must be one question of at most {QUESTION_MAX_WORDS} words ending with \"?\".")
+        elif question.rstrip("?").lower() in text.lower():
+            problems.append(f"{label}: opening_question just repeats the narration.")
+        extra = sorted(_numbers(question) - _numbers(text))
+        if extra:
+            problems.append(f"{label}: the opening_question uses figure(s) {extra} that are not in the Short's own sentences.")
     if not hook or len(hook) > HOOK_MAX_CHARS or ODD_CHARS.search(hook):
         problems.append(f"{label}: hook_text must be 1 to {HOOK_MAX_CHARS} characters with no hashtags or emojis (got {len(hook)}).")
     elif hook.rstrip(".?!").lower() in text.lower():
@@ -148,7 +162,10 @@ def written_problems(label: str, text: str, hook: str, title: str, intro: str) -
 
 
 def _review_key(item: dict) -> str:
-    raw = json.dumps([item["hook_text"], item["title"], item["description_intro"], item["sentences"]])
+    fields = [item["hook_text"], item["title"], item["description_intro"], item["sentences"]]
+    if item.get("opening_question"):  # plans from before spoken questions keep their keys
+        fields.insert(0, item["opening_question"])
+    raw = json.dumps(fields)
     return hashlib.sha1(raw.encode()).hexdigest()[:12]
 
 
@@ -160,13 +177,17 @@ def review(video: Video, plan: dict, stub: bool = False) -> None:
     title = json.loads(meta.read_text()).get("title", "") if meta.exists() else video.brief().get("topic", "")
     script = video.read_text("script.txt")
     for attempt in (1, 2):
+        # A rejection is about the narration itself, and the reviewer does not always give the same answer twice, so
+        # a rejected Short stays rejected until its sentences change (or --replan), rather than being asked again.
         todo = [(n, it) for n, it in enumerate(plan["shorts"], start=1)
-                if it.get("review", {}).get("key") != _review_key(it)]
+                if it.get("review", {}).get("key") != _review_key(it)
+                and not (it.get("review", {}).get("verdict") == "REJECT" and it["review"].get("sentences") == it["sentences"])]
         if not todo:
             return
         blocks = []
         for n, it in todo:
-            blocks.append(f"## Short {n}\nhook_text: {it['hook_text']}\ntitle: {it['title']}\n"
+            blocks.append(f"## Short {n}\nopening_question: {it.get('opening_question') or '(none)'}\n"
+                          f"hook_text: {it['hook_text']}\ntitle: {it['title']}\n"
                           f"description_intro: {it['description_intro']}\nnarration ({it['seconds']:.0f} seconds, "
                           f"script sentences {it['sentences']}):\n{it['text']}\n")
         text = fill(prompt("shorts_review.md"), TITLE=title, SCRIPT=script, SHORTS="\n".join(blocks))
@@ -179,23 +200,46 @@ def review(video: Video, plan: dict, stub: bool = False) -> None:
             problems = [str(p) for p in r.get("problems", [])]
             if verdict == "FIX" and attempt == 1:
                 fixed = dict(it)
-                for field in ("hook_text", "title", "description_intro"):
-                    if str(r.get(field, "")).strip():
+                for field in QUESTION_FIELDS:
+                    if str(r.get(field, "")).strip() and (field != "opening_question" or "opening_question" in it):
                         fixed[field] = " ".join(str(r[field]).split())
-                rule = written_problems(f"Short {n}", it["text"], fixed["hook_text"], fixed["title"], fixed["description_intro"])
+                rule = written_problems(f"Short {n}", it["text"], fixed["hook_text"], fixed["title"], fixed["description_intro"],
+                                        fixed.get("opening_question"))
                 if not rule and _review_key(fixed) != _review_key(it):
-                    before = {f: it[f] for f in ("hook_text", "title", "description_intro")}
-                    it.update({f: fixed[f] for f in before})
+                    before = {f: it.get(f) for f in QUESTION_FIELDS}
+                    it.update({f: fixed[f] for f in before if f in fixed})
                     it["review_history"] = it.get("review_history", []) + [{"before": before, "problems": problems}]
                     log(f"  short {n}: the reviewer rewrote its lines; checking them again")
                     continue  # no "review" key for the new lines, so attempt 2 checks them
                 problems += rule
             it["review"] = {"verdict": "PASS" if verdict == "PASS" else ("REJECT" if verdict == "REJECT" else "FIX"),
-                            "problems": problems, "key": _review_key(it)}
+                            "problems": problems, "key": _review_key(it), "sentences": it["sentences"]}
     for n, it in enumerate(plan["shorts"], start=1):  # still unreviewed after two rounds
-        if it.get("review", {}).get("key") != _review_key(it):
+        if it.get("review", {}).get("key") != _review_key(it) and it.get("review", {}).get("verdict") != "REJECT":
             it["review"] = {"verdict": "FIX", "problems": ["The rewritten lines were not confirmed by a second check."],
                             "key": _review_key(it)}
+
+
+def write_questions(video: Video, plan: dict, targets: list[int], stub: bool = False) -> None:
+    """A spoken opening question for each target Short that has none yet (plans made before questions existed)."""
+    todo = [(n, it) for n, it in enumerate(plan["shorts"], start=1) if n in targets and not it.get("opening_question")]
+    if not todo:
+        return
+    meta = video.dir / "metadata.json"
+    title = json.loads(meta.read_text()).get("title", "") if meta.exists() else video.brief().get("topic", "")
+    blocks = [f"## Short {n}\non-screen text: {it['hook_text']}\ntitle: {it['title']}\nnarration:\n{it['text']}\n" for n, it in todo]
+    answer = llm.ask(fill(prompt("shorts_question.md"), VOICE=voice_profile(), TITLE=title, SHORTS="\n".join(blocks)),
+                     "shorts_question", stub=stub, context={"shorts": [n for n, _ in todo]})
+    video.path("shorts", "raw", "question_answer.md").write_text(answer)
+    got = {int(q.get("short", 0)): " ".join(str(q.get("opening_question", "")).split())
+           for q in extract_json(answer).get("questions", []) if isinstance(q, dict)}
+    for n, it in todo:
+        q = got.get(n, "")
+        rule = written_problems(f"Short {n}", it["text"], it["hook_text"], it["title"], it["description_intro"], q)
+        if rule:
+            raise StageError("Claude's opening question breaks the rules:\n  " + "\n  ".join(rule) + "\nRun the command again.")
+        it["opening_question"] = q
+        log(f"  short {n}: opening question \"{q}\"")
 
 
 def choose(video: Video, count: int, stub: bool = False) -> list[dict]:
@@ -385,16 +429,72 @@ def build_end_card(out, title: str) -> None:
         "-crf", "18", "-pix_fmt", "yuv420p", str(out)])
 
 
-def _audio(video: Video, segs: list[dict], out, loud: bool) -> None:
+def _lufs(path, start: float | None = None, length: float | None = None) -> float | None:
+    from .s10_qc import _ff
+    args = (["-ss", f"{start:.3f}", "-t", f"{length:.3f}"] if start is not None else []) + ["-i", str(path)]
+    out = _ff(args + ["-vn", "-af", "loudnorm=print_format=json", "-f", "null", "-"])
+    m = re.search(r"\{[^{}]*\"input_i\"[^{}]*\}", out, re.S)
+    try:
+        v = float(json.loads(m.group(0))["input_i"]) if m else None
+    except ValueError:
+        return None
+    return v if v is not None and math.isfinite(v) and v > -70 else None
+
+
+def record_question(video: Video, question: str, d, stub: bool = False):
+    """The opening question in the video's own narrator voice, trimmed and matched in loudness to the narration
+    that follows. Cached by wording, so it is recorded (about a cent) only once per question."""
+    from . import s3_voiceover as v3
+    tl = video.read_json("timeline.json")
+    provider, voice = tl.get("provider", config.TTS_PROVIDER), tl.get("voice", config.GEMINI_TTS_VOICE)
+    key = hashlib.sha1(f"{provider}|{voice}|{config.GEMINI_TTS_STYLE}|{question}".encode()).hexdigest()[:10]
+    raw = d / f"question_{key}.wav"
+    if not raw.exists():
+        for old in d.glob("question_*.wav"):
+            old.unlink()
+        if stub or provider == "stub":
+            pcm = v3._stub_pcm(question)
+        elif provider == "gemini":
+            if not config.GOOGLE_API_KEY:
+                raise StageError("GOOGLE_API_KEY is empty, and the opening question has to be recorded. Put it in .env (README).")
+            log(f"  recording the opening question in the {voice} voice (about a cent)")
+            pcm = v3._gemini(question, voice=voice)
+        else:
+            pcm = v3._synthesize(question)
+        v3._write_wav(raw, v3._strip_wav_header(pcm))
+    return raw
+
+
+def _audio(video: Video, segs: list[dict], out, loud: bool, question=None) -> float:
+    """Cut and join the narration (after the opening question, if any). Returns the question's length with its pause."""
     ffmpeg = find_ffmpeg()[0]
-    parts = []
+    parts, inputs, q_len = [], ["-i", str(video.dir / "voiceover.wav")], 0.0
+    if question is not None:
+        qa = question.with_name("question_trimmed.wav")
+        trim = "" if not loud else ("silenceremove=start_periods=1:start_threshold=-45dB,areverse,"
+                                    "silenceremove=start_periods=1:start_threshold=-45dB,areverse,")
+        gain = 0.0
+        if loud:
+            first = segs[0]
+            target, have = _lufs(video.dir / "voiceover.wav", first["cut"], max(first["length"], 3.0)), _lufs(question)
+            if target is not None and have is not None:
+                gain = max(-12.0, min(12.0, target - have))
+        sh([ffmpeg, "-y", "-v", "error", "-i", str(question), "-af",
+            f"{trim}volume={gain:.2f}dB,aresample=24000,afade=t=in:d=0.01,apad=pad_dur={QUESTION_GAP_S}",
+            "-ac", "1", str(qa)])
+        q_len = media_duration(qa)
+        inputs += ["-i", str(qa)]
+        parts.append("[1:a]aresample=24000,asetpts=PTS-STARTPTS[q]")
     for k, s in enumerate(segs):
         a, b = s["cut"], s["cut"] + (s["length"] - GAP_S)
         parts.append(f"[0:a]atrim=start={a:.3f}:end={b:.3f},asetpts=PTS-STARTPTS,afade=t=in:d=0.01,"
                      f"afade=t=out:st={max(b - a - 0.03, 0):.3f}:d=0.03,apad=pad_dur={GAP_S}[a{k}]")
     tail = ",loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000" if loud else ",aresample=48000"
-    graph = ";".join(parts) + ";" + "".join(f"[a{k}]" for k in range(len(segs))) + f"concat=n={len(segs)}:v=0:a=1{tail}[out]"
-    sh([ffmpeg, "-y", "-v", "error", "-i", str(video.dir / "voiceover.wav"), "-filter_complex", graph, "-map", "[out]", str(out)])
+    labels = ("[q]" if question is not None else "") + "".join(f"[a{k}]" for k in range(len(segs)))
+    n = len(segs) + (1 if question is not None else 0)
+    graph = ";".join(parts) + ";" + labels + f"concat=n={n}:v=0:a=1{tail}[out]"
+    sh([ffmpeg, "-y", "-v", "error", *inputs, "-filter_complex", graph, "-map", "[out]", str(out)])
+    return q_len
 
 
 def build_short(video: Video, n: int, item: dict, stub: bool = False) -> dict:
@@ -417,13 +517,19 @@ def build_short(video: Video, n: int, item: dict, stub: bool = False) -> dict:
         offset += L
 
     voice = d / "voice.wav"
-    _audio(video, segs, voice, loud=not (stub or tl.get("provider") == "stub"))
+    loud = not (stub or tl.get("provider") == "stub")
+    question = item.get("opening_question")
+    q_wav = record_question(video, question, d, stub=stub) if question else None
+    q_len = _audio(video, segs, voice, loud=loud, question=q_wav)
     total = media_duration(voice)
-    scale = total / offset if offset else 1.0
+    scale = (total - q_len) / offset if offset else 1.0
     for s in segs:  # the cut audio can differ from the plan by a few milliseconds
-        s["offset"] *= scale
+        s["offset"] = s["offset"] * scale + q_len
         s["length"] *= scale
-    write_srt(segs, d / "captions.srt")
+    caption_parts = list(segs)
+    if question:  # the question's words spread evenly over its recording (it has no word timings)
+        caption_parts.insert(0, {"text": question, "words": None, "cut": 0.0, "offset": 0.0, "length": q_len})
+    write_srt(caption_parts, d / "captions.srt")
 
     # One picture per run of sentences that share a shot, re-framed at least every HOLD_S seconds.
     groups = []
@@ -432,6 +538,7 @@ def build_short(video: Video, n: int, item: dict, stub: bool = False) -> dict:
             groups[-1]["end"] = s["offset"] + s["length"]
         else:
             groups.append({"shot": s["shot"], "start": s["offset"], "end": s["offset"] + s["length"]})
+    groups[0]["start"] = 0.0  # the first picture also covers the opening question
     jobs, motion = [], 0
     for g in groups:
         img = video.dir / "images" / f"shot_{g['shot']['id']:03d}.png"
@@ -483,6 +590,7 @@ def build_short(video: Video, n: int, item: dict, stub: bool = False) -> dict:
             "-af", "apad", "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-shortest", "-movflags", "+faststart", "short.mp4"]
     sh(cmd, cwd=d)
     info = {"burned_captions": burn, "end_card_seconds": config.SHORT_END_CARD_S, "voice_seconds": round(total, 2),
+            "opening_question": question or "", "question_seconds": round(q_len, 2),
             "shots": sorted({s["shot"]["id"] for s in segs})}
     (d / "assembly.json").write_text(json.dumps(info, indent=2) + "\n")
     return info
@@ -587,11 +695,15 @@ def run(video: Video, count: int = config.SHORTS_COUNT, only: int | None = None,
         log(f"  planned {len(items)} Shorts:")
         for n, it in enumerate(items, start=1):
             log(f"    {n}. {it['title']}  ({it['seconds']:.0f}s)  on screen: \"{it['hook_text']}\"")
+    # Every Short that will be built opens on a spoken question; plans made before that get one now.
+    targets = [n for n, it in enumerate(plan["shorts"], start=1)
+               if (not only or n == only) and it.get("review", {}).get("verdict") != "REJECT"]
+    write_questions(video, plan, targets, stub=stub)
     # Re-check the written lines whenever they changed (including hand edits to plan.json).
     by_i = {s["i"]: s for s in tl["sentences"]}
     for n, it in enumerate(plan["shorts"], start=1):
         rule = written_problems(f"Short {n}", " ".join(by_i[i]["text"] for i in it["sentences"]), it.get("hook_text", ""),
-                                it.get("title", ""), it.get("description_intro", ""))
+                                it.get("title", ""), it.get("description_intro", ""), it.get("opening_question"))
         if rule:
             raise StageError("plan.json breaks the rules:\n  " + "\n  ".join(rule))
     plan_path.write_text(json.dumps(plan, indent=2, ensure_ascii=False) + "\n")
@@ -620,7 +732,7 @@ def run(video: Video, count: int = config.SHORTS_COUNT, only: int | None = None,
             continue
         build_short(video, n, item, stub=stub)
         d = video.dir / "shorts" / f"short_{n}"
-        meta = {"title": item["title"], "hook_text": item["hook_text"], "tags": item["tags"], "sentences": item["sentences"], "why": item["why"],
+        meta = {"title": item["title"], "opening_question": item.get("opening_question", ""), "hook_text": item["hook_text"], "tags": item["tags"], "sentences": item["sentences"], "why": item["why"],
                 "parent_title": parent_title}
         (d / "metadata.json").write_text(json.dumps(meta, indent=2, ensure_ascii=False) + "\n")
         (d / "description.txt").write_text(description(item, parent_title, sources_md))
@@ -640,7 +752,8 @@ def write_review(video: Video, plan: dict, parent_title: str) -> None:
     for n, item in enumerate(plan["shorts"], start=1):
         d = video.dir / "shorts" / f"short_{n}"
         r = item.get("review", {})
-        lines += [f"## Short {n}: {item['title']}", "", f"- On screen: **{item['hook_text']}**",
+        lines += [f"## Short {n}: {item['title']}", "", f"- Spoken first: *{item.get('opening_question') or '(no opening question)'}*",
+                  f"- On screen: **{item['hook_text']}**",
                   f"- Text check: {r.get('verdict', 'not run')}" + (" (lines rewritten by the check)" if item.get("review_history") else "")]
         lines += [f"  - {p}" for p in r.get("problems", [])]
         lines += [f"- Length: about {item['seconds']:.0f} seconds",
@@ -653,5 +766,5 @@ def write_review(video: Video, plan: dict, parent_title: str) -> None:
             r = json.loads(qc.read_text())
             lines.append(f"- Quality check: {'PASSED' if r['passed'] else 'FAILED'}")
             lines += [f"  - FAIL: {f}" for f in r["failures"]] + [f"  - note: {w}" for w in r["warnings"]]
-        lines += ["", "Narration:", "", f"> {item['text']}", ""]
+        lines += ["", "Narration:", "", f"> {(item.get('opening_question') + ' ') if item.get('opening_question') else ''}{item['text']}", ""]
     video.path("shorts", "REVIEW.md").write_text("\n".join(lines))

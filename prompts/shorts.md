@@ -28,6 +28,7 @@ Rules for every Short:
 - Use different parts of the video for different Shorts (the puzzle, the key reveal, the surprising counterpoint, the honest limits). Do not reuse a sentence across Shorts.
 
 For each Short also write:
+- opening_question: one new question the narrator will speak BEFORE the first sentence, recorded in the same voice. At most 14 words, ends with "?", plain spoken words, answered by the Short's narration by the end, does not give the answer away, and relies only on what the Short's own sentences say (no new numbers, names or claims).
 - hook_text: the text shown on screen above the picture for the whole Short. It sets up the question the narration answers, so a viewer reading it in two seconds wants to stay to the end. It is NOT a copy of the first sentence and it must NOT give away the answer. At most 42 characters, plain words, sentence case, no hashtags, no emojis. It may only say what the Short's own sentences support, and every number in it must appear in those sentences. Examples of the shape (not the content): "They own it. They can't run it." / "Why would anyone pay that much?"
 - title: under 70 characters, curiosity-driven, plain words, no hashtags, no emojis, no clickbait claims the sentences do not support. Every number in it must appear in the Short's own sentences.
 - description_intro: one or two plain sentences for the viewer saying what they will learn. Don't call it "the Short" or "this video". Every number in it must appear in the Short's own sentences. Say nothing the sentences do not say.
@@ -36,5 +37,5 @@ For each Short also write:
 
 Output only this JSON between the marker lines:
 ===JSON===
-{"shorts": [{"hook_text": "", "title": "", "sentences": [1, 2, 3], "description_intro": "", "tags": [], "why": ""}]}
+{"shorts": [{"opening_question": "", "hook_text": "", "title": "", "sentences": [1, 2, 3], "description_intro": "", "tags": [], "why": ""}]}
 ===END===
