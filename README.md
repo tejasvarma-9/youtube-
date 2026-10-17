@@ -41,6 +41,26 @@ Replace everything in `<...>` and the quotes with a real business and a real ins
 
 The step-by-step commands (`new`, then `run <slug>`) still work if you prefer them.
 
+**Step 3b. Check the script with vidIQ before recording (do this for every video)**
+
+`auto` does not pause: once the fact-check passes it goes straight on to record the voice, and a script change after that means paying for the recording again. So to put the vidIQ check before the voice, make the script first and stop:
+
+```bash
+python -m pipeline new "Who Really Pays for <thing>?" --slug <slug> --angle "<insight>" --notes "$(cat notes/<notes-file>.md)"
+python -m pipeline script <slug>
+python -m pipeline factcheck <slug>
+```
+
+If the fact-check fails, fix `out/<slug>/script.txt` and `facts.txt` by hand, or run `python -m pipeline revise <slug>`, then run `factcheck` again. When it passes, open `out/<slug>/script.txt` and:
+
+1. Paste the script into vidIQ (AI Coach) and ask for the title options. Prefer a title vidIQ scores well **only if it is still accurate**: no "profit" for operating income, no "free users paid nothing" if ads pay for them, nothing the fact list does not support. The title, thumbnail text and description opening are all checked against the fact list by the quality check.
+2. Do **not** add `[VISUAL]` or any other bracketed note to `script.txt`. The voice reads that file aloud, and the pictures are drawn from it automatically. To change a picture, edit that shot's `scene` and `prompt` in `out/<slug>/shots.json` after the `shots` stage.
+3. Length is measured by the pipeline at about 180 words a minute (1,650 to 1,950 words is about 10 minutes). Ignore a coach's minute estimate if it disagrees.
+4. Any new sentence or claim you add because of the coach needs its own line in `facts.txt` and a fresh `python -m pipeline factcheck <slug>`.
+5. Put the title you pick into `out/<slug>/metadata.json` after the metadata stage runs (edit `"title"`), or tell Claude which one you chose.
+
+Then record everything: `python -m pipeline run <slug>`.
+
 **Step 4. Read the quality check, then watch it**
 
 ```bash
