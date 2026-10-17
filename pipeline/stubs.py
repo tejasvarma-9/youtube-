@@ -77,9 +77,12 @@ def llm_answer(kind: str, ctx: dict) -> str:
                 ids.append(free[k]["i"])
                 secs += free[k]["seconds"]
                 k += 1
-            shorts.append({"title": f"Stub short {n + 1}", "sentences": ids, "description_intro": "A stub clip from the video.",
+            shorts.append({"hook_text": f"Stub hook {n + 1}", "title": f"Stub short {n + 1}", "sentences": ids, "description_intro": "A stub clip from the video.",
                            "tags": ["stub", "test", "shorts"], "why": "stub"})
         return "===JSON===\n" + json.dumps({"shorts": shorts}) + "\n===END==="
+    if kind == "shorts_review":
+        return "===JSON===\n" + json.dumps({"reviews": [{"short": n, "verdict": "PASS", "problems": []}
+                                                       for n in ctx.get("shorts", [])]}) + "\n===END==="
     if kind == "metadata":
         n = ctx.get("sentence_count", 10)
         step = max(1, n // 5)

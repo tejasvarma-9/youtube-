@@ -9,6 +9,12 @@ blurred copy of itself), with large word-by-word captions and a short logo card 
 the words are the ones the fact-check already passed, nothing needs fact-checking again. The title
 and description Claude writes may only use numbers that appear in the Short's own sentences.
 
+Each Short also carries a short hook_text shown on screen above the picture for the whole clip, and
+it ends on its own last line (no "watch the full video" card: Shorts that work as trailers stop being
+shown). Before anything is built, a separate Claude check (prompts/shorts_review.md), which did not
+write those lines, reads each Short's hook_text, title and description against its narration and the
+full script. It passes them, rewrites them, or rejects the Short; a Short that does not pass is not built.
+
 Everything is written to out/<slug>/shorts/: plan.json, REVIEW.md and one folder per Short
 (short.mp4, captions.srt, metadata.json, description.txt, qc.json).
 """
@@ -28,13 +34,15 @@ from .common import StageError, Video, extract_json, fill, fmt_ts, log, media_du
 from .lint import _numbers
 from .s6_assemble import MOTIONS, find_ffmpeg
 
-CLIP_VERSION = "short2"   # bump when the picture layout changes, so cached clips are rebuilt
+CLIP_VERSION = "short3"   # bump when the picture layout changes, so cached clips are rebuilt
+PLAN_VERSION = 2          # plans from an older version (no hook_text, no review) are chosen again
 HEAD_PAD_S = 0.10         # a little room before the first word of a sentence
 TAIL_PAD_S = 0.35         # and after the last
 GAP_S = 0.12              # silence between kept sentences
 HOLD_S = 5.0              # the same picture is re-framed (punch in or pan) at least this often
 FG_TOP = 420              # top edge of the picture inside the 1080x1920 frame
-HEADER_Y = 220            # logo and channel name, kept clear of the Shorts app's top bar
+HOOK_TOP, HOOK_BOTTOM = 140, 395   # the on-screen hook text sits here, below the Shorts app's top bar
+HOOK_MAX_CHARS = 42
 # Captions sit above the Shorts app's title and buttons (bottom ~400 px). libass scales its font units to
 # the video height (units of 1/288), so 11 is about 73 px and MarginV 110 puts the line's bottom near y=1185, just under the picture.
 CAPTION_STYLE = (
@@ -42,6 +50,7 @@ CAPTION_STYLE = (
     "BorderStyle=1,Outline=3,Shadow=0,Alignment=2,MarginV=110"
 )
 BAD_HOOK_START = re.compile(r"^\s*(and|but|so|then|now|that|this|it|they|which|these|those|also)\b", re.I)
+ODD_CHARS = re.compile(r"[#\U0001F000-\U0001FFFF\u2600-\u27BF]")
 BACK_POINTER = re.compile(r"\b(as i said|as we saw|earlier|the first place|the next (?:company|two|one)|zoom out|back to the question)\b", re.I)
 
 
@@ -111,19 +120,82 @@ def validate_plan(plan: dict, sentences: list[dict], count: int, stub: bool = Fa
         text = " ".join(by_i[i]["text"] for i in ids)
         title = str(sh_.get("title", "")).strip()
         intro = str(sh_.get("description_intro", "")).strip()
-        if not title or len(title) > 70 or "#" in title:
-            problems.append(f"{label}: the title must be 1 to 70 characters with no hashtags.")
-        if not intro:
-            problems.append(f"{label}: description_intro is empty.")
-        allowed = _numbers(text)
-        for where, value in (("title", title), ("description_intro", intro)):
-            extra = sorted(_numbers(value) - allowed)
-            if extra:
-                problems.append(f"{label}: the {where} uses figure(s) {extra} that are not in the Short's own sentences.")
+        hook = " ".join(str(sh_.get("hook_text", "")).split())
+        problems += written_problems(label, text, hook, title, intro)
         tags = [str(t).strip() for t in sh_.get("tags", []) if str(t).strip()][:8]
-        items.append({"title": title, "sentences": ids, "description_intro": intro, "tags": tags,
+        items.append({"hook_text": hook, "title": title, "sentences": ids, "description_intro": intro, "tags": tags,
                       "why": str(sh_.get("why", "")).strip(), "seconds": round(total, 1), "text": text})
     return items, problems
+
+
+def written_problems(label: str, text: str, hook: str, title: str, intro: str) -> list[str]:
+    """Mechanical rules for the lines written for a Short (the review step judges the rest)."""
+    problems = []
+    if not hook or len(hook) > HOOK_MAX_CHARS or ODD_CHARS.search(hook):
+        problems.append(f"{label}: hook_text must be 1 to {HOOK_MAX_CHARS} characters with no hashtags or emojis (got {len(hook)}).")
+    elif hook.rstrip(".?!").lower() in text.lower():
+        problems.append(f"{label}: hook_text just repeats the narration; it should set up the question instead.")
+    if not title or len(title) > 70 or ODD_CHARS.search(title):
+        problems.append(f"{label}: the title must be 1 to 70 characters with no hashtags or emojis.")
+    if not intro:
+        problems.append(f"{label}: description_intro is empty.")
+    allowed = _numbers(text)
+    for where, value in (("hook_text", hook), ("title", title), ("description_intro", intro)):
+        extra = sorted(_numbers(value) - allowed)
+        if extra:
+            problems.append(f"{label}: the {where} uses figure(s) {extra} that are not in the Short's own sentences.")
+    return problems
+
+
+def _review_key(item: dict) -> str:
+    raw = json.dumps([item["hook_text"], item["title"], item["description_intro"], item["sentences"]])
+    return hashlib.sha1(raw.encode()).hexdigest()[:12]
+
+
+def review(video: Video, plan: dict, stub: bool = False) -> None:
+    """An independent Claude check of every Short's written lines. Fills item["review"]; FIX suggestions are
+    applied (if they pass the mechanical rules) and checked again once. Shorts reviewed before keep their result
+    while their lines are unchanged, so a hand edit to plan.json is checked again automatically."""
+    meta = video.dir / "metadata.json"
+    title = json.loads(meta.read_text()).get("title", "") if meta.exists() else video.brief().get("topic", "")
+    script = video.read_text("script.txt")
+    for attempt in (1, 2):
+        todo = [(n, it) for n, it in enumerate(plan["shorts"], start=1)
+                if it.get("review", {}).get("key") != _review_key(it)]
+        if not todo:
+            return
+        blocks = []
+        for n, it in todo:
+            blocks.append(f"## Short {n}\nhook_text: {it['hook_text']}\ntitle: {it['title']}\n"
+                          f"description_intro: {it['description_intro']}\nnarration ({it['seconds']:.0f} seconds, "
+                          f"script sentences {it['sentences']}):\n{it['text']}\n")
+        text = fill(prompt("shorts_review.md"), TITLE=title, SCRIPT=script, SHORTS="\n".join(blocks))
+        answer = llm.ask(text, "shorts_review", stub=stub, context={"shorts": [n for n, _ in todo]})
+        video.path("shorts", "raw", f"review_answer_{attempt}.md").write_text(answer)
+        got = {int(r.get("short", 0)): r for r in extract_json(answer).get("reviews", []) if isinstance(r, dict)}
+        for n, it in todo:
+            r = got.get(n, {"verdict": "REJECT", "problems": ["The reviewer gave no answer for this Short."]})
+            verdict = str(r.get("verdict", "")).upper()
+            problems = [str(p) for p in r.get("problems", [])]
+            if verdict == "FIX" and attempt == 1:
+                fixed = dict(it)
+                for field in ("hook_text", "title", "description_intro"):
+                    if str(r.get(field, "")).strip():
+                        fixed[field] = " ".join(str(r[field]).split())
+                rule = written_problems(f"Short {n}", it["text"], fixed["hook_text"], fixed["title"], fixed["description_intro"])
+                if not rule and _review_key(fixed) != _review_key(it):
+                    before = {f: it[f] for f in ("hook_text", "title", "description_intro")}
+                    it.update({f: fixed[f] for f in before})
+                    it["review_history"] = it.get("review_history", []) + [{"before": before, "problems": problems}]
+                    log(f"  short {n}: the reviewer rewrote its lines; checking them again")
+                    continue  # no "review" key for the new lines, so attempt 2 checks them
+                problems += rule
+            it["review"] = {"verdict": "PASS" if verdict == "PASS" else ("REJECT" if verdict == "REJECT" else "FIX"),
+                            "problems": problems, "key": _review_key(it)}
+    for n, it in enumerate(plan["shorts"], start=1):  # still unreviewed after two rounds
+        if it.get("review", {}).get("key") != _review_key(it):
+            it["review"] = {"verdict": "FIX", "problems": ["The rewritten lines were not confirmed by a second check."],
+                            "key": _review_key(it)}
 
 
 def choose(video: Video, count: int, stub: bool = False) -> list[dict]:
@@ -207,32 +279,41 @@ def _cover(img, w: int, h: int):
     return big.crop((x, y, x + w, y + h))
 
 
-def _backdrop(src):
-    """The picture, blurred and darkened to fill the frame, with the logo and channel name at the top."""
-    from PIL import Image, ImageDraw, ImageEnhance, ImageFilter
-    from .s8_thumbnail import _font
+def hook_lines(draw, hook: str):
+    """The hook text at the biggest size that fits the band in at most two lines."""
+    from .s8_thumbnail import _font, _wrap
+    max_w = config.SHORT_WIDTH - 90
+    for size in range(96, 50, -4):
+        font = _font(size)
+        lines = _wrap(draw, hook, font, max_w)
+        height = len(lines) * size * 1.18
+        if len(lines) <= 2 and all(draw.textlength(ln, font=font) <= max_w for ln in lines) and height <= HOOK_BOTTOM - HOOK_TOP:
+            return font, size, lines
+    return font, size, _wrap(draw, hook, font, max_w)[:2]
+
+
+def _backdrop(src, hook: str = ""):
+    """The picture, blurred and darkened to fill the frame, with the hook text at the top (white, last line yellow)."""
+    from PIL import ImageDraw, ImageEnhance, ImageFilter
+    from .s8_thumbnail import WHITE, YELLOW
 
     W, H = config.SHORT_WIDTH, config.SHORT_HEIGHT
-    bg = ImageEnhance.Brightness(_cover(src, W, H).filter(ImageFilter.GaussianBlur(42))).enhance(0.55)
-    d = ImageDraw.Draw(bg)
-    font = _font(46)
-    name = config.CHANNEL_NAME
-    tw = d.textlength(name, font=font)
-    size = 96
-    if config.LOGO.exists():
-        logo = Image.open(config.LOGO).convert("RGBA").resize((size, size), Image.LANCZOS)
-        mask = Image.new("L", (size, size), 0)
-        ImageDraw.Draw(mask).ellipse([0, 0, size - 1, size - 1], fill=255)
-        total = size + 20 + tw
-        x0 = (W - total) / 2
-        bg.paste(logo, (round(x0), HEADER_Y), mask)
-        d.text((x0 + size + 20, HEADER_Y + size / 2 - 28), name, font=font, fill=(255, 255, 255), stroke_width=3, stroke_fill=(16, 16, 16))
-    else:
-        d.text(((W - tw) / 2, HEADER_Y + 20), name, font=font, fill=(255, 255, 255), stroke_width=3, stroke_fill=(16, 16, 16))
+    bg = ImageEnhance.Brightness(_cover(src, W, H).filter(ImageFilter.GaussianBlur(42))).enhance(0.5)
+    if hook:
+        d = ImageDraw.Draw(bg)
+        font, size, lines = hook_lines(d, hook)
+        step = round(size * 1.18)
+        y = HOOK_TOP + ((HOOK_BOTTOM - HOOK_TOP) - step * len(lines)) // 2
+        for k, line in enumerate(lines):
+            box = d.textbbox((0, 0), line, font=font)
+            fill = YELLOW if (k == len(lines) - 1 and len(lines) > 1) else WHITE
+            d.text(((W - (box[2] - box[0])) // 2, y - box[1] + (step - (box[3] - box[1])) // 2), line, font=font,
+                   fill=fill, stroke_width=max(5, size // 12), stroke_fill=(10, 10, 10))
+            y += step
     return bg
 
 
-def build_clip(img, out, frames: int, motion: int) -> None:
+def build_clip(img, out, frames: int, motion: int, hook: str = "") -> None:
     """One picture as a vertical clip: the picture across the middle with a slow push-in or pan."""
     from PIL import Image
 
@@ -240,7 +321,7 @@ def build_clip(img, out, frames: int, motion: int) -> None:
     src = Image.open(img).convert("RGB")
     sw, sh_ = src.size
     fh = round(sh_ * W / sw)
-    bg = _backdrop(src)
+    bg = _backdrop(src, hook)
     move = MOTIONS[motion % len(MOTIONS)]
     cmd = [find_ffmpeg()[0], "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}",
            "-r", str(FPS), "-i", "-", "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", str(out)]
@@ -320,8 +401,8 @@ def build_short(video: Video, n: int, item: dict, stub: bool = False) -> dict:
     ffmpeg, can_burn = find_ffmpeg()
     if not ffmpeg:
         raise StageError("No usable ffmpeg found. On your Mac: brew install ffmpeg")
-    if not config.LOGO.exists():
-        raise StageError(f"The channel logo is missing ({config.LOGO}). Every Short ends on the logo card, so add it first.")
+    if config.SHORT_END_CARD_S > 0 and not config.LOGO.exists():
+        raise StageError(f"The channel logo is missing ({config.LOGO}). The end card needs it (or set SHORT_END_CARD_S to 0).")
     tl = video.read_json("timeline.json")
     shots = video.read_json("shots.json")["shots"]
     by_i = {s["i"]: s for s in tl["sentences"]}
@@ -368,16 +449,17 @@ def build_short(video: Video, n: int, item: dict, stub: bool = False) -> dict:
     todo, clips = [], []
     for idx, (img, frames, mot) in enumerate(jobs):
         st = img.stat()
-        key = hashlib.sha1(f"{CLIP_VERSION}|{st.st_size}|{st.st_mtime_ns}|{frames}|{mot % len(MOTIONS)}".encode()).hexdigest()[:10]
+        key = hashlib.sha1(f"{CLIP_VERSION}|{st.st_size}|{st.st_mtime_ns}|{frames}|{mot % len(MOTIONS)}|{item['hook_text']}".encode()).hexdigest()[:10]
         clip = clips_dir / f"{idx:02d}_{key}.mp4"
         clips.append(clip)
         if not clip.exists():
-            todo.append((img, clip, frames, mot))
-    ttl = video.read_json("metadata.json").get("title", "") if (video.dir / "metadata.json").exists() else video.brief().get("topic", "")
-    card = clips_dir / f"end_{hashlib.sha1((CLIP_VERSION + ttl + str(config.LOGO.stat().st_mtime_ns)).encode()).hexdigest()[:10]}.mp4"
-    if not card.exists():
-        build_end_card(card, ttl)
-    clips.append(card)
+            todo.append((img, clip, frames, mot, item["hook_text"]))
+    if config.SHORT_END_CARD_S > 0:  # off by default: Shorts that send viewers elsewhere stop being shown
+        ttl = video.read_json("metadata.json").get("title", "") if (video.dir / "metadata.json").exists() else video.brief().get("topic", "")
+        card = clips_dir / f"end_{hashlib.sha1((CLIP_VERSION + ttl + str(config.LOGO.stat().st_mtime_ns)).encode()).hexdigest()[:10]}.mp4"
+        if not card.exists():
+            build_end_card(card, ttl)
+        clips.append(card)
     for old in clips_dir.glob("*.mp4"):
         if old not in clips:
             old.unlink()
@@ -478,7 +560,9 @@ def _plan_current(video: Video, plan_path) -> dict | None:
         return None
     plan = json.loads(plan_path.read_text())
     sha = hashlib.sha1(video.read_text("script.txt").encode()).hexdigest()[:12]
-    return plan if plan.get("script_sha") == sha and plan.get("voice_seconds") == round(video.read_json("timeline.json")["duration"], 1) else None
+    fresh = (plan.get("version") == PLAN_VERSION and plan.get("script_sha") == sha
+             and plan.get("voice_seconds") == round(video.read_json("timeline.json")["duration"], 1))
+    return plan if fresh else None
 
 
 def run(video: Video, count: int = config.SHORTS_COUNT, only: int | None = None, plan_only: bool = False,
@@ -498,13 +582,28 @@ def run(video: Video, count: int = config.SHORTS_COUNT, only: int | None = None,
         log(f"  using the Shorts plan in out/{video.slug}/shorts/plan.json (add --replan to choose again)")
     else:
         items = choose(video, count, stub=stub)
-        plan = {"script_sha": hashlib.sha1(video.read_text("script.txt").encode()).hexdigest()[:12],
+        plan = {"version": PLAN_VERSION, "script_sha": hashlib.sha1(video.read_text("script.txt").encode()).hexdigest()[:12],
                 "voice_seconds": round(tl["duration"], 1), "shorts": items}
-        plan_path.write_text(json.dumps(plan, indent=2, ensure_ascii=False) + "\n")
         log(f"  planned {len(items)} Shorts:")
         for n, it in enumerate(items, start=1):
-            log(f"    {n}. {it['title']}  ({it['seconds']:.0f}s)")
+            log(f"    {n}. {it['title']}  ({it['seconds']:.0f}s)  on screen: \"{it['hook_text']}\"")
+    # Re-check the written lines whenever they changed (including hand edits to plan.json).
+    by_i = {s["i"]: s for s in tl["sentences"]}
+    for n, it in enumerate(plan["shorts"], start=1):
+        rule = written_problems(f"Short {n}", " ".join(by_i[i]["text"] for i in it["sentences"]), it.get("hook_text", ""),
+                                it.get("title", ""), it.get("description_intro", ""))
+        if rule:
+            raise StageError("plan.json breaks the rules:\n  " + "\n  ".join(rule))
+    plan_path.write_text(json.dumps(plan, indent=2, ensure_ascii=False) + "\n")
+    log("  checking each Short's on-screen text, title and description (separate Claude check)...")
+    review(video, plan, stub=stub)
+    plan_path.write_text(json.dumps(plan, indent=2, ensure_ascii=False) + "\n")
+    for n, it in enumerate(plan["shorts"], start=1):
+        r = it["review"]
+        log(f"    short {n}: {r['verdict']}" + ("" if r["verdict"] == "PASS" else "  " + "; ".join(r["problems"])))
     if plan_only:
+        write_review(video, plan, json.loads((video.dir / "metadata.json").read_text()).get("title", "")
+                     if (video.dir / "metadata.json").exists() else "")
         return
     parent_title = json.loads((video.dir / "metadata.json").read_text()).get("title", "") if (video.dir / "metadata.json").exists() else video.brief().get("topic", "")
     sources_md = (video.dir / "sources.md").read_text() if (video.dir / "sources.md").exists() else ""
@@ -512,9 +611,16 @@ def run(video: Video, count: int = config.SHORTS_COUNT, only: int | None = None,
     for n, item in enumerate(plan["shorts"], start=1):
         if only and n != only:
             continue
+        if item["review"]["verdict"] != "PASS":
+            old = video.dir / "shorts" / f"short_{n}" / "short.mp4"
+            if old.exists():  # never leave an earlier build of an unapproved Short lying around to be uploaded
+                old.unlink()
+            log(f"  short {n}: NOT built, the check did not pass it (see shorts/REVIEW.md). Edit its lines in plan.json and "
+                f"run again, or --replan.")
+            continue
         build_short(video, n, item, stub=stub)
         d = video.dir / "shorts" / f"short_{n}"
-        meta = {"title": item["title"], "tags": item["tags"], "sentences": item["sentences"], "why": item["why"],
+        meta = {"title": item["title"], "hook_text": item["hook_text"], "tags": item["tags"], "sentences": item["sentences"], "why": item["why"],
                 "parent_title": parent_title}
         (d / "metadata.json").write_text(json.dumps(meta, indent=2, ensure_ascii=False) + "\n")
         (d / "description.txt").write_text(description(item, parent_title, sources_md))
@@ -528,15 +634,22 @@ def run(video: Video, count: int = config.SHORTS_COUNT, only: int | None = None,
 
 def write_review(video: Video, plan: dict, parent_title: str) -> None:
     lines = [f"# Shorts for: {parent_title}", "",
-             "Each Short is made only of sentences from the approved script, in the narrator's own voice. Watch them, "
-             "then upload one at a time. When you upload, set the full video as the Related video.", ""]
+             "Each Short is made only of sentences from the approved script, in the narrator's own voice. The on-screen text, "
+             "title and description were checked by a separate Claude review. Watch them, then upload one at a time, a few "
+             "days apart. When you upload, set the full video as the Related video.", ""]
     for n, item in enumerate(plan["shorts"], start=1):
         d = video.dir / "shorts" / f"short_{n}"
-        lines += [f"## Short {n}: {item['title']}", "", f"- Length: about {item['seconds']:.0f} seconds plus a {config.SHORT_END_CARD_S:.1f}s logo card",
+        r = item.get("review", {})
+        lines += [f"## Short {n}: {item['title']}", "", f"- On screen: **{item['hook_text']}**",
+                  f"- Text check: {r.get('verdict', 'not run')}" + (" (lines rewritten by the check)" if item.get("review_history") else "")]
+        lines += [f"  - {p}" for p in r.get("problems", [])]
+        lines += [f"- Length: about {item['seconds']:.0f} seconds",
                   f"- Why it works: {item['why'] or 'n/a'}", f"- File: shorts/short_{n}/short.mp4",
                   f"- Description: shorts/short_{n}/description.txt", f"- Tags: {', '.join(item['tags'])}"]
         qc = d / "qc.json"
-        if qc.exists():
+        if r.get("verdict") != "PASS":
+            lines.append("- Not built: the text check did not pass it. Do not upload anything from this folder.")
+        elif qc.exists():
             r = json.loads(qc.read_text())
             lines.append(f"- Quality check: {'PASSED' if r['passed'] else 'FAILED'}")
             lines += [f"  - FAIL: {f}" for f in r["failures"]] + [f"  - note: {w}" for w in r["warnings"]]

@@ -527,7 +527,8 @@ class StubEndToEnd(unittest.TestCase):
             probe = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height",
                                     "-of", "csv=p=0", str(sd / "short.mp4")], capture_output=True, text=True).stdout.strip()
             self.assertEqual(probe, "1080,1920")
-        self.assertTrue((d / "shorts" / "REVIEW.md").exists())
+        self.assertIn("On screen:", (d / "shorts" / "REVIEW.md").read_text())
+        self.assertTrue(all(it["review"]["verdict"] == "PASS" for it in plan["shorts"]))
         # A fact-check that has not passed blocks Shorts.
         fc = json.loads((d / "factcheck.json").read_text())
         fc["passed"] = False
@@ -742,17 +743,51 @@ class ShortsPlanning(unittest.TestCase):
         rows = self.rows()
         self.assertIn(4, sh.blocked_sentences(rows))
         self.assertIn(8, sh.blocked_sentences(rows))
-        good = {"shorts": [{"title": "Who paid $776 million?", "sentences": [1, 2], "description_intro": "A look at the money.", "tags": ["a"]},
-                           {"title": "Three places", "sentences": [5, 6], "description_intro": "Where it comes from.", "tags": ["b"]}]}
+        good = {"shorts": [{"hook_text": "Free, so who paid?", "title": "Who paid $776 million?", "sentences": [1, 2], "description_intro": "A look at the money.", "tags": ["a"]},
+                           {"hook_text": "Where the money comes from", "title": "Three places", "sentences": [5, 6], "description_intro": "Where it comes from.", "tags": ["b"]}]}
         items, problems = sh.validate_plan(good, rows, 2, stub=True)
         self.assertEqual(problems, [], problems)
-        bad = {"shorts": [{"title": "$999 million", "sentences": [3, 4], "description_intro": "x", "tags": []},
-                          {"title": "Reuse", "sentences": [2, 8], "description_intro": "y", "tags": []}]}
+        bad = {"shorts": [{"hook_text": "Not $500 million #money", "title": "$999 million", "sentences": [3, 4], "description_intro": "x", "tags": []},
+                          {"hook_text": "Like and subscribe", "title": "Reuse", "sentences": [2, 8], "description_intro": "y", "tags": []}]}
         _, problems = sh.validate_plan(bad, rows, 2, stub=True)
         joined = " ".join(problems)
         self.assertIn("blocked", joined)
         self.assertIn("leans on what came before", joined)
         self.assertIn("not in the Short's own sentences", joined)
+        self.assertIn("hook_text must be", joined)
+        self.assertIn("just repeats the narration", joined)
+
+    def test_review_applies_fixes_and_blocks_rejects(self):
+        from pipeline import s11_shorts as sh
+        from pipeline.common import Video
+        d = config.OUT / "zz-test-review"
+        shutil.rmtree(d, ignore_errors=True)
+        d.mkdir(parents=True)
+        try:
+            (d / "script.txt").write_text("Robinhood earned $776 million in 2026.")
+            (d / "metadata.json").write_text(json.dumps({"title": "Who Really Pays?"}))
+            plan = {"shorts": [
+                {"hook_text": "A secret scam?", "title": "T1", "description_intro": "D1", "sentences": [1], "seconds": 30, "text": "Robinhood earned $776 million in 2026."},
+                {"hook_text": "Where it goes", "title": "T2", "description_intro": "D2", "sentences": [2], "seconds": 30, "text": "Fees."}]}
+            answers = iter([
+                '===JSON===\n{"reviews": [{"short": 1, "verdict": "FIX", "problems": ["scam is not stated"], "hook_text": "Free, so who paid?"},'
+                ' {"short": 2, "verdict": "REJECT", "problems": ["no payoff"]}]}\n===END===',
+                '===JSON===\n{"reviews": [{"short": 1, "verdict": "PASS", "problems": []}]}\n===END==='])
+            with mock.patch.object(sh.llm, "ask", lambda *a, **k: next(answers)):
+                sh.review(Video("zz-test-review"), plan)
+            self.assertEqual(plan["shorts"][0]["hook_text"], "Free, so who paid?")
+            self.assertEqual(plan["shorts"][0]["review"]["verdict"], "PASS")
+            self.assertEqual(plan["shorts"][0]["review_history"][0]["before"]["hook_text"], "A secret scam?")
+            self.assertEqual(plan["shorts"][1]["review"]["verdict"], "REJECT")
+            # Unchanged lines are not sent again; a hand edit is.
+            with mock.patch.object(sh.llm, "ask", side_effect=AssertionError("should not be asked")):
+                sh.review(Video("zz-test-review"), plan)
+            plan["shorts"][0]["title"] = "Edited by hand"
+            with mock.patch.object(sh.llm, "ask", return_value='===JSON===\n{"reviews": [{"short": 1, "verdict": "PASS", "problems": []}]}\n===END===') as ask:
+                sh.review(Video("zz-test-review"), plan)
+                self.assertEqual(ask.call_count, 1)
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
 
     def test_caption_chunks(self):
         from pipeline import s11_shorts as sh

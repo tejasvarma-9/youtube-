@@ -264,11 +264,12 @@ python -m pipeline shorts <slug> --replan        # choose again
 python -m pipeline shorts <slug> --only 2        # rebuild just Short 2
 ```
 
-- **What a Short is:** sentences taken word for word from the approved script, in order, cut from the existing voiceover, over the video's own pictures in a vertical 1080x1920 frame, with big word-by-word captions and a 2.5-second logo card. 20 to 58 seconds each.
-- **Why it's safe:** no new narration is written, so the fact-check carries over. The command refuses to run until the full video's fact-check has passed. Titles and descriptions may only use numbers that are in the Short's own sentences; Claude's choice is checked and sent back once if it breaks a rule.
-- **Cost:** nothing extra. Claude's choice uses your Claude plan; no new voice or pictures are made.
-- **Output:** `out/<slug>/shorts/REVIEW.md` lists each Short with its narration and quality check. Each `short_N/` folder has `short.mp4`, `description.txt` (with sources, disclaimer and #shorts) and `metadata.json` (title, tags).
-- **You don't have to publish them all.** Watch them and pick. If a Short uses a picture the full video's quality check flagged, REVIEW.md says so.
+- **What a Short is:** sentences taken word for word from the approved script, in order, cut from the existing voiceover, over the video's own pictures in a vertical 1080x1920 frame. A short line of text sits above the picture for the whole Short (the "text hook": it sets up the question the narration answers), with big word-by-word captions below. 20 to 58 seconds each. No end card and no "watch the full video" line: Shorts that work as trailers stop being shown.
+- **The text check:** before anything is built, a separate Claude check that did not write them reads each Short's on-screen line, title and description against its narration and the full script. It passes them, rewrites them (and checks the rewrite again), or rejects the Short. A rejected Short is not built; REVIEW.md says why. If you edit a line in `shorts/plan.json` by hand, the next run checks it again.
+- **Why it's safe:** no new narration is written, so the fact-check carries over. The command refuses to run until the full video's fact-check has passed. The on-screen line, title and description may only use numbers that are in the Short's own sentences.
+- **Cost:** nothing extra. Claude's choice and the text check use your Claude plan; no new voice or pictures are made.
+- **Output:** `out/<slug>/shorts/REVIEW.md` lists each Short with its on-screen line, the text check's verdict, its narration and quality check. Each `short_N/` folder has `short.mp4`, `description.txt` (with sources, disclaimer and #shorts) and `metadata.json` (title, tags). Only upload Shorts that REVIEW.md marks PASS.
+- **You don't have to publish them all.** Watch them and pick, and post them a few days apart. If a Short uses a picture the full video's quality check flagged, REVIEW.md says so.
 - **Upload:** Studio, Create, Upload videos, drag in `short.mp4` (YouTube treats a vertical video under 3 minutes as a Short). Title from `metadata.json`, description from `description.txt`, not made for kids, altered content No. Under **Related video**, pick the full video so viewers can tap through to it.
 
 ## Rules to remember
