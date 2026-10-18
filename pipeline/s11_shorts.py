@@ -181,7 +181,7 @@ def review(video: Video, plan: dict, stub: bool = False) -> None:
         # a rejected Short stays rejected until its sentences change (or --replan), rather than being asked again.
         todo = [(n, it) for n, it in enumerate(plan["shorts"], start=1)
                 if it.get("review", {}).get("key") != _review_key(it)
-                and not (it.get("review", {}).get("verdict") == "REJECT" and it["review"].get("sentences") == it["sentences"])]
+                and not (it.get("review", {}).get("verdict") == "REJECT" and it["review"].get("sentences", it["sentences"]) == it["sentences"])]
         if not todo:
             return
         blocks = []

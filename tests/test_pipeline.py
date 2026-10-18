@@ -790,6 +790,13 @@ class ShortsPlanning(unittest.TestCase):
             # Unchanged lines are not sent again; a hand edit is.
             with mock.patch.object(sh.llm, "ask", side_effect=AssertionError("should not be asked")):
                 sh.review(Video("zz-test-review"), plan)
+            # A rejection saved by the first version (no "sentences" recorded) is also kept.
+            legacy = {"shorts": [{"hook_text": "H", "title": "T", "description_intro": "D", "sentences": [2], "seconds": 30,
+                                  "text": "Fees.", "review": {"verdict": "REJECT", "problems": ["old"], "key": sh._review_key(
+                                      {"hook_text": "H", "title": "T", "description_intro": "D", "sentences": [2]})}}]}
+            with mock.patch.object(sh.llm, "ask", side_effect=AssertionError("should not be asked")):
+                sh.review(Video("zz-test-review"), legacy)
+            self.assertEqual(legacy["shorts"][0]["review"]["verdict"], "REJECT")
             # A rejected Short is not asked again while its sentences are unchanged, even if its lines are edited.
             plan["shorts"][1]["title"] = "Edited too"
             with mock.patch.object(sh.llm, "ask", side_effect=AssertionError("should not be asked")):
