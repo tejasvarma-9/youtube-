@@ -17,6 +17,7 @@ from __future__ import annotations
 import difflib
 import json
 import re
+from pathlib import Path
 
 from PIL import Image, ImageDraw
 
@@ -260,14 +261,21 @@ def _captions(video: Video, failures: list, warnings: list, checks: dict) -> Non
 
 # --- pictures, thumbnail and claims (Claude) ------------------------------------
 
-def contact_sheets(video: Video) -> list:
+def contact_sheets(video: Video, out_dir=None, ids=None) -> list:
+    """Contact sheets of the pictures (all, or only the shot ids given). With out_dir, they are written there
+    and nothing earlier is touched; without it, they replace qc/sheet_*.png."""
     shots = video.read_json("shots.json")["shots"]
+    if ids is not None:
+        shots = [s for s in shots if s["id"] in set(ids)]
     per = SHEET_COLS * SHEET_ROWS
     th = THUMB_W * 9 // 16
     out = []
-    qc_dir = video.path("qc", ".keep").parent
-    for old in qc_dir.glob("sheet_*.png"):
-        old.unlink()
+    if out_dir is not None:
+        qc_dir = video.path(*Path(out_dir).relative_to(video.dir).parts, ".keep").parent
+    else:
+        qc_dir = video.path("qc", ".keep").parent
+        for old in qc_dir.glob("sheet_*.png"):
+            old.unlink()
     for n in range(0, len(shots), per):
         group = shots[n:n + per]
         sheet = Image.new("RGB", (SHEET_COLS * THUMB_W, SHEET_ROWS * (th + 28)), "white")

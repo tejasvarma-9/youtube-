@@ -8,7 +8,7 @@ import re
 import shutil
 import sys
 
-from . import (align, config, s1_script, s2_factcheck, s3_voiceover, s4_shots, s5_images, s6_assemble, s7_metadata, s11_shorts,
+from . import (align, config, crew, s1_script, s2_factcheck, s3_voiceover, s4_shots, s5_images, s6_assemble, s7_metadata, s11_shorts,
                s8_thumbnail, s9_review, s10_qc)
 from .common import StageError, Video, log, slugify
 
@@ -234,6 +234,27 @@ def main(argv=None) -> int:
     sh.add_argument("--only", type=int, help="build only this Short number")
     sh.add_argument("--plan-only", action="store_true", help="choose the Shorts and stop, so you can read the plan first")
     sh.add_argument("--replan", action="store_true", help="choose the Shorts again, even if a plan exists")
+    cr = sub.add_parser("crew", help="the agent crew: topic scout to a GO / NO-GO verdict (never approves or uploads)")
+    cr.add_argument("--topic", help="skip the topic scout and make this topic")
+    cr.add_argument("--angle", help="the one original insight, calculation or comparison")
+    cr.add_argument("--character", help='recurring example character, e.g. "Bob, a first-time gym owner"')
+    cr.add_argument("--notes", help="anything else the writer should know")
+    cr.add_argument("--words", type=int, default=config.TARGET_WORDS)
+    cr.add_argument("--slug", help="resume this video, or the name for the new one")
+    cr.add_argument("--pick-top", action="store_true", help="take the topic scout's first topic without asking")
+    cr.add_argument("--from-agent", choices=crew.AGENTS[1:], help="run this agent and every one after it again")
+    cr.add_argument("--yes", action="store_true", help="don't ask before spending money (the estimate is still printed)")
+    cr.add_argument("--count", type=int, default=config.SHORTS_COUNT, help="how many Shorts, 2 to 4")
+    cr.add_argument("--replan", action="store_true", help="choose the Shorts again, even if a plan exists")
+    rs = sub.add_parser("shorts-results", help="record how a Short did after 48 hours (the Shorts picker learns from it)")
+    rs.add_argument("slug")
+    rs.add_argument("n", type=int, help="the Short's number")
+    rs.add_argument("--views", type=int)
+    rs.add_argument("--avg", help="average view duration, e.g. 0:21")
+    rs.add_argument("--length", help="the Short's length, e.g. 0:45 (default: measured from short.mp4)")
+    rs.add_argument("--swiped", help="percent swiped away, e.g. 49")
+    rs.add_argument("--subs", type=int, help="subscribers gained")
+    rs.add_argument("--when", help="date the numbers were read, e.g. 2026-10-24 (default: today)")
     sub.add_parser("status", help="list videos and which stages are done")
     sub.add_parser("doctor", help="check that this Mac is set up")
     vt = sub.add_parser("voice-test", help="a short sample in several voices to choose from (about 1 cent)")
@@ -278,6 +299,10 @@ def main(argv=None) -> int:
         elif a.cmd == "shorts":
             s11_shorts.run(Video(a.slug), count=a.count, only=a.only, plan_only=a.plan_only, replan=a.replan,
                            stub=a.stub, force=a.force)
+        elif a.cmd == "crew":
+            crew.cmd_crew(a)
+        elif a.cmd == "shorts-results":
+            crew.cmd_shorts_results(a)
         elif a.cmd == "status":
             cmd_status()
         elif a.cmd == "doctor":

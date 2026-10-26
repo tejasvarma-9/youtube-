@@ -149,6 +149,47 @@ def voice_profile() -> str:
     return config.VOICE_FILE.read_text()
 
 
+# --- never delete: move aside -------------------------------------------------
+
+def replaced_dir(root: Path) -> Path:
+    from datetime import date
+    return Path(root) / f"_replaced_{date.today().isoformat()}"
+
+
+def retire(path, root=None):
+    """Move a file or folder out of the way instead of deleting it.
+
+    It goes to <root>/_replaced_<date>/<same relative path>, where root is the video's folder
+    (out/<slug>/) when the path is inside one. A name already taken there gets .2, .3, ...
+    Returns the new path, or None if there was nothing to move."""
+    import shutil
+    path = Path(path)
+    if not path.exists():
+        return None
+    if root is None:
+        try:
+            rel = path.resolve().relative_to(config.OUT.resolve())
+            root = config.OUT / rel.parts[0] if len(rel.parts) > 1 else path.parent
+        except ValueError:
+            root = path.parent
+    root = Path(root)
+    try:
+        rel = path.resolve().relative_to(root.resolve())
+    except ValueError:
+        rel = Path(path.name)
+    if rel.parts and rel.parts[0].startswith("_replaced_"):
+        return path  # already set aside
+    dest = replaced_dir(root) / rel
+    n = 2
+    while dest.exists():
+        dest = dest.with_name(f"{dest.stem.split('.')[0]}.{n}{''.join(path.suffixes)}") if path.is_file() else \
+            dest.with_name(f"{path.name}.{n}")
+        n += 1
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(path), str(dest))
+    return dest
+
+
 # --- processes and media ----------------------------------------------------
 
 def run(cmd: list[str], **kw) -> subprocess.CompletedProcess:

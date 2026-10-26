@@ -13,7 +13,12 @@ Each line: [number] (start in seconds, length in seconds) sentence
 {{SENTENCES}}
 </sentences>
 
-Sentence numbers you may NOT use (the welcome line, the channel name, the ending): {{BLOCKED}}
+Sentence numbers you may NOT use (the welcome line, the channel name, the ending, and any sentence another Short already uses): {{BLOCKED}}
+
+<past_results>
+How earlier Shorts on this channel did, best held first. Retention is the share of the Short the average viewer watched. Repeat the SHAPE of openings that held people (never their content), and avoid shapes that most people swiped past.
+{{PAST_RESULTS}}
+</past_results>
 
 Pick {{COUNT}} different Shorts. Each Short is a list of sentence numbers in increasing order. They do not have to be neighbours, but every sentence you keep must still make sense after the ones between them are cut.
 
@@ -24,6 +29,9 @@ Rules for every Short:
 - The Short must be understandable on its own: no sentence may refer to something that is not in the Short ("the study", "that figure", "the three brokers") unless the Short includes the sentence that introduces it.
 - End on the payoff: the answer, the reveal, or the line that explains what it all means. Never end mid-explanation, on a minor detail, or on anything that asks the viewer to watch the full video, like, subscribe or comment.
 - Keep numbers together with the thing they measure and the date or company they belong to: if you keep a figure, keep the sentence that says whose it is and when.
+- Keep the limits with the claim. If a sentence you keep gives a figure or finding from a study, survey, report, filing or legal settlement, also keep the sentence that says what it does NOT show or who and when it covered (for example "the study only looked at 2019" or "the company did not admit wrongdoing"), whenever the script has one. A figure without its limit says more than the full video does.
+- Say what every name is. If the Short names a company, product, agency or program that a stranger might not know, it must include the sentence that says what it is (for example "the CFPB, the US consumer finance regulator"). If the script has no such sentence near enough to keep, choose a different part of the video.
+- Three different jobs. The opening_question, the hook_text and the first sentence of the narration must not all say the same thing: the question asks something a stranger already wonders about, the hook_text sets up the contrast, and the first sentence starts the story. If two of them share most of their words, rewrite one.
 - Do not include sentences that give advice or say "you should".
 - Use different parts of the video for different Shorts (the puzzle, the key reveal, the surprising counterpoint, the honest limits). Do not reuse a sentence across Shorts.
 

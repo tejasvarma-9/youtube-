@@ -30,7 +30,8 @@ import re
 import subprocess
 
 from . import config, llm
-from .common import StageError, Video, extract_json, fill, fmt_ts, log, media_duration, prompt, run as sh, voice_profile
+from .common import (StageError, Video, extract_json, fill, fmt_ts, log, media_duration, prompt, retire, run as sh,
+                     split_sentences, voice_profile)
 from .lint import _numbers
 from .s6_assemble import MOTIONS, find_ffmpeg
 
@@ -46,6 +47,8 @@ HOOK_MAX_CHARS = 42
 QUESTION_MAX_WORDS = 14
 QUESTION_GAP_S = 0.30     # pause between the spoken opening question and the first sentence
 QUESTION_FIELDS = ("opening_question", "hook_text", "title", "description_intro")
+QUESTION_S_PER_WORD = 0.38   # about how long the narrator takes per word of the opening question
+SAME_THING_OVERLAP = 0.6     # share of content words two lines may share before they "say the same thing"
 # Captions sit above the Shorts app's title and buttons (bottom ~400 px). libass scales its font units to
 # the video height (units of 1/288), so 11 is about 73 px and MarginV 110 puts the line's bottom near y=1185, just under the picture.
 CAPTION_STYLE = (
@@ -81,10 +84,18 @@ def length_of(s: dict) -> float:
     return (b - a) + GAP_S
 
 
-def validate_plan(plan: dict, sentences: list[dict], count: int, stub: bool = False) -> tuple[list[dict], list[str]]:
-    """The chosen Shorts with their lengths and texts, and everything wrong with the choice."""
+def question_seconds(question: str | None) -> float:
+    """About how long the spoken opening question takes, with its pause (for the length limit before it is recorded)."""
+    return len(question.split()) * QUESTION_S_PER_WORD + QUESTION_GAP_S if question else 0.0
+
+
+def validate_plan(plan: dict, sentences: list[dict], count: int, stub: bool = False,
+                  exclude=()) -> tuple[list[dict], list[str]]:
+    """The chosen Shorts with their lengths and texts, and everything wrong with the choice.
+    exclude: sentence numbers other Shorts already use (when one Short is chosen again)."""
     by_i = {s["i"]: s for s in sentences}
     blocked = blocked_sentences(sentences)
+    exclude = set(exclude)
     min_s = 3.0 if stub else config.SHORT_MIN_S
     problems, items, used = [], [], set()
     raw = plan.get("shorts") if isinstance(plan, dict) else None
@@ -108,12 +119,16 @@ def validate_plan(plan: dict, sentences: list[dict], count: int, stub: bool = Fa
             continue
         if set(ids) & blocked:
             problems.append(f"{label}: uses blocked sentence(s) {sorted(set(ids) & blocked)} (welcome line, channel name or ending).")
+        if set(ids) & exclude:
+            problems.append(f"{label}: uses sentence(s) {sorted(set(ids) & exclude)}, which another Short already uses or which were rejected.")
         if set(ids) & used:
             problems.append(f"{label}: reuses sentence(s) {sorted(set(ids) & used)} from another Short.")
         used |= set(ids)
         total = sum(length_of(by_i[i]) for i in ids)
-        if not min_s <= total <= config.SHORT_MAX_S:
-            problems.append(f"{label}: {total:.0f} seconds long; it must be {min_s:.0f} to {config.SHORT_MAX_S:.0f}.")
+        q_s = question_seconds(sh_.get("opening_question")) if isinstance(sh_.get("opening_question"), str) else 0.0
+        if not min_s <= total + q_s <= config.SHORT_MAX_S:
+            problems.append(f"{label}: {total + q_s:.0f} seconds long" + (f" (with about {q_s:.0f}s for the spoken question)" if q_s else "")
+                            + f"; it must be {min_s:.0f} to {config.SHORT_MAX_S:.0f}.")
         first = by_i[ids[0]]["text"]
         if BAD_HOOK_START.search(first) or BACK_POINTER.search(first):
             problems.append(f"{label}: starts on \"{first[:60]}\", which leans on what came before. Start on a sentence that stands alone.")
@@ -132,10 +147,36 @@ def validate_plan(plan: dict, sentences: list[dict], count: int, stub: bool = Fa
     return items, problems
 
 
+_STOP = set("a an and are as at be but by can do does did for from has have how if in into is it its of on or so that "
+            "the their them then there these they this those to was were what when where which who whom why will with "
+            "would you your about just only than".split())
+
+
+def _content_words(text: str) -> set[str]:
+    words = (w.strip(".,'-") for w in re.findall(r"[a-z0-9$%][a-z0-9$%.,'-]*", text.lower()))
+    return {w for w in words if w not in _STOP and len(w) > 2}
+
+
+def near_duplicate(a: str, b: str) -> bool:
+    """Two lines that say the same thing in nearly the same words."""
+    x, y = _content_words(a), _content_words(b)
+    if len(x & y) < 2:
+        return False
+    return len(x & y) / len(x | y) >= SAME_THING_OVERLAP or len(x & y) >= min(len(x), len(y))
+
+
 def written_problems(label: str, text: str, hook: str, title: str, intro: str, question: str | None = None) -> list[str]:
     """Mechanical rules for the lines written for a Short (the review step judges the rest).
     question=None means the Short has no spoken opening question (yet); "" means it is missing."""
     problems = []
+    # The question, the on-screen text and the first narrated line each do a different job; none repeats another.
+    first = (split_sentences(text) or [""])[0]
+    trio = [("opening_question", question or ""), ("hook_text", hook), ("first narrated sentence", first)]
+    for k, (na, a) in enumerate(trio):
+        for nb, b in trio[k + 1:]:
+            if a and b and near_duplicate(a, b):
+                problems.append(f"{label}: the {na} and the {nb} say the same thing (\"{a[:50]}\" / \"{b[:50]}\"). "
+                                "Each must do a different job: ask, set up the contrast, start the story.")
     if question is not None:
         words = question.split()
         if not words or len(words) > QUESTION_MAX_WORDS or not question.endswith("?") or ODD_CHARS.search(question):
@@ -242,22 +283,54 @@ def write_questions(video: Video, plan: dict, targets: list[int], stub: bool = F
         log(f"  short {n}: opening question \"{q}\"")
 
 
-def choose(video: Video, count: int, stub: bool = False) -> list[dict]:
+def past_results_text(limit: int = 12) -> str:
+    """How earlier Shorts on the channel did (from every out/<slug>/shorts/results.json), best held first,
+    so the picker can repeat the openings that kept people watching and avoid the ones they swiped past."""
+    rows = []
+    for f in sorted(config.OUT.glob("*/shorts/results.json")):
+        try:
+            data = json.loads(f.read_text())
+        except ValueError:
+            continue
+        for n, r in (data.get("shorts") or {}).items():
+            if isinstance(r, dict) and r.get("retention") is not None:
+                rows.append((f.parent.parent.name, n, r))
+    if not rows:
+        return "(no results recorded yet)"
+    rows.sort(key=lambda x: -(x[2].get("retention") or 0))
+    out = []
+    for slug, n, r in rows[:limit]:
+        out.append(f"- {slug} Short {n}: held {r['retention']:.0%} of its length on average "
+                   f"({r.get('avg_view_s', 0):.0f}s of {r.get('length_s', 0):.0f}s), {r.get('swiped_away_pct', '?')}% swiped away, "
+                   f"{r.get('views', '?')} views, {r.get('subscribers', '?')} subscribers. "
+                   f"Spoken first: \"{r.get('opening_question') or '(none)'}\" On screen: \"{r.get('hook_text', '')}\" "
+                   f"Title: \"{r.get('title', '')}\"")
+    return "\n".join(out)
+
+
+def choose(video: Video, count: int, stub: bool = False, exclude=(), feedback: str = "") -> list[dict]:
+    """Ask Claude for `count` Shorts. exclude: sentence numbers it may not use (other Shorts' sentences, or ones
+    already rejected); feedback: the reviewer's reasons for rejecting the last choice, passed back to the picker."""
     tl = video.read_json("timeline.json")
     sentences = tl["sentences"]
-    blocked = blocked_sentences(sentences)
+    exclude = set(exclude)
+    blocked = blocked_sentences(sentences) | exclude
     meta_path = video.dir / "metadata.json"
     title = json.loads(meta_path.read_text()).get("title", "") if meta_path.exists() else video.brief().get("topic", "")
     lines = "\n".join(f"[{s['i']}] ({s['start']:.1f}s, {length_of(s):.1f}s) {s['text']}" for s in sentences)
     base = fill(prompt("shorts.md"), MIN_S=f"{config.SHORT_MIN_S:.0f}", MAX_S=f"{config.SHORT_MAX_S:.0f}", VOICE=voice_profile(),
-                TITLE=title, SENTENCES=lines, BLOCKED=", ".join(str(i) for i in sorted(blocked)) or "none", COUNT=str(count))
+                TITLE=title, SENTENCES=lines, BLOCKED=", ".join(str(i) for i in sorted(blocked)) or "none", COUNT=str(count),
+                PAST_RESULTS=past_results_text())
+    if feedback:
+        base += ("\n\nA reviewer who did not choose them REJECTED an earlier choice for this Short, for these reasons. "
+                 "Choose different sentences that avoid every one of these problems:\n" + feedback.strip() + "\n")
     ctx = {"sentences": [{"i": s["i"], "text": s["text"], "seconds": length_of(s)} for s in sentences],
            "blocked": sorted(blocked), "count": count}
     extra = ""
     for attempt in (1, 2):
         answer = llm.ask(base + extra, "shorts", stub=stub, context=ctx)
         video.path("shorts", "raw", f"plan_answer_{attempt}.md").write_text(answer)
-        items, problems = validate_plan(extract_json(answer), sentences, count, stub=stub)
+        items, problems = validate_plan(extract_json(answer), sentences, count, stub=stub, exclude=exclude)
         if not problems:
             return items
         log("  the plan had problems:\n    " + "\n    ".join(problems))
@@ -451,7 +524,7 @@ def record_question(video: Video, question: str, d, stub: bool = False):
     raw = d / f"question_{key}.wav"
     if not raw.exists():
         for old in d.glob("question_*.wav"):
-            old.unlink()
+            retire(old)
         if stub or provider == "stub":
             pcm = v3._stub_pcm(question)
         elif provider == "gemini":
@@ -569,9 +642,9 @@ def build_short(video: Video, n: int, item: dict, stub: bool = False) -> dict:
         clips.append(card)
     for old in clips_dir.glob("*.mp4"):
         if old not in clips:
-            old.unlink()
+            retire(old)
     for old in clips_dir.glob("*.png"):
-        old.unlink()
+        retire(old)
     log(f"  short {n}: {len(segs)} sentences, {total:.0f}s of voice; building {len(todo)} clips")
     workers = max(1, min(4, (os.cpu_count() or 2) - 1))
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
@@ -726,7 +799,7 @@ def run(video: Video, count: int = config.SHORTS_COUNT, only: int | None = None,
         if item["review"]["verdict"] != "PASS":
             old = video.dir / "shorts" / f"short_{n}" / "short.mp4"
             if old.exists():  # never leave an earlier build of an unapproved Short lying around to be uploaded
-                old.unlink()
+                retire(old)
             log(f"  short {n}: NOT built, the check did not pass it (see shorts/REVIEW.md). Edit its lines in plan.json and "
                 f"run again, or --replan.")
             continue

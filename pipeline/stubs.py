@@ -103,6 +103,24 @@ def llm_answer(kind: str, ctx: dict) -> str:
             "tags": ["how vending machines make money", "vending machine business", "passive income myth", "business breakdown"],
             "chapters": chapters,
         }) + "\n===END==="
+    if kind == "topic_scout":
+        topics = []
+        for name in ("How vending machines make money", "Who really pays for airport lounges?", "How parking garages make money"):
+            topics.append({"topic": name, "angle": f"Stub angle for {name.lower()}.", "demand": "stub: not measured",
+                           "competition": [{"title": "Stub video", "channel": "Stub channel", "views": "0", "how_we_differ": "stub"}],
+                           "sources": [{"title": f"Stub primary source {k}", "url": f"https://example.com/stub-{k}", "kind": "10-K",
+                                        "supports": "stub"} for k in (1, 2, 3)],
+                           "news": [], "why_now": "stub"})
+        return "===JSON===\n" + json.dumps({"topics": topics}) + "\n===END==="
+    if kind in ("crew_images",):
+        return "===JSON===\n" + json.dumps({"images": []}) + "\n===END==="
+    if kind == "crew_short_qc":
+        return "===JSON===\n" + json.dumps({"problems": []}) + "\n===END==="
+    if kind == "overseer":
+        return "===JSON===\n" + json.dumps({
+            "full_video": {"verdict": "GO", "reasons": ["stub run"], "fixes": []},
+            "shorts": [{"short": n, "verdict": "GO", "reasons": ["stub run"], "fixes": []} for n in ctx.get("shorts", [])],
+            "rechecked_claims": [], "summary": "Stub run: nothing was really checked."}) + "\n===END==="
     raise ValueError(f"no stub for {kind}")
 
 

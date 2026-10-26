@@ -21,14 +21,15 @@ import wave
 import requests
 
 from . import align, config, s2_factcheck
-from .common import StageError, Video, log, sentences_with_paragraphs
+from .common import StageError, Video, log, retire, sentences_with_paragraphs
 
 RATE = 24000
 TTS_URL = "https://texttospeech.googleapis.com/v1/text:synthesize"
 
 
 def redo(video: Video, phrase: str, stub: bool = False) -> int:
-    """Forget the cached recording of every chunk containing the phrase, so `voice` records it again."""
+    """Set aside the cached recording of every chunk containing the phrase (moved to _replaced_<date>/,
+    never deleted), so `voice` records it again."""
     provider = config.TTS_PROVIDER
     voice = "stub" if stub else (config.GEMINI_TTS_VOICE if provider == "gemini" else config.TTS_VOICE)
     voice_id = f"{provider}:{config.GEMINI_TTS_MODEL}:{voice}" if provider == "gemini" else f"{provider}:{voice}"
@@ -42,7 +43,7 @@ def redo(video: Video, phrase: str, stub: bool = False) -> int:
         key = hashlib.sha1(f"{voice_id}|{config.TTS_PACE}|{config.GEMINI_TTS_STYLE}|{text}".encode()).hexdigest()[:12]
         wav = video.path("audio", f"{key}.wav")
         if wav.exists():
-            wav.unlink()
+            retire(wav)
             gone += 1
     return gone
 

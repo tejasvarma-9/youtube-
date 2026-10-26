@@ -292,6 +292,37 @@ python -m pipeline shorts <slug> --only 2        # rebuild just Short 2
 - **You don't have to publish them all.** Watch them and pick, and post them a few days apart. If a Short uses a picture the full video's quality check flagged, REVIEW.md says so.
 - **Upload:** Studio, Create, Upload videos, drag in `short.mp4` (YouTube treats a vertical video under 3 minutes as a Short). Title from `metadata.json`, description from `description.txt`, not made for kids, altered content No. Under **Related video**, pick the full video so viewers can tap through to it.
 
+## The crew (one command, ending in a GO / NO-GO recommendation)
+
+```bash
+python -m pipeline crew                                   # topic scout first: it proposes 3 to 5 topics, you pick one
+python -m pipeline crew --pick-top                        # take the scout's first topic
+python -m pipeline crew --topic "How X makes money" --angle "..."   # skip the scout
+python -m pipeline crew --slug <slug>                     # resume: finished agents skip themselves
+python -m pipeline crew --slug <slug> --from-agent images # run that agent and every later one again
+python -m pipeline crew ... --yes                         # don't ask before spending (the estimate is still printed)
+python -m pipeline shorts-results <slug> <n>              # 48 hours after a Short goes up: record how it did
+```
+
+Seven agents run in order. Each writes `out/<slug>/agents/<agent>.md` (what it checked, what it fixed, what it could not fix) and a `.json` copy for the overseer.
+
+| Agent | What it does | Retries |
+|---|---|---|
+| topic_scout (new) | 3 to 5 topics, each with demand seen on the web, one angle and at least 3 primary sources. Skips topics already in `out/`. Lists go to `out/_crew/`. Web search only (no vidIQ). | 1 re-ask |
+| script_factcheck | script, then fact-check with the independent audit; a failed check is revised | 3 revisions |
+| voice_captions | voice, then a speech recognizer listens: caption lines far off the voice and runs of words it never heard (garbled or skipped speech) get those lines re-recorded | 2 |
+| images | shot list and pictures, then Claude looks at every picture; pictures with a serious problem are moved aside and redrawn, with the problem added to their scene | 2 |
+| packaging | assemble, metadata, thumbnail, the full quality check and the review package; a fix the quality check gives for the title, thumbnail text or description is applied once | 1 |
+| shorts | the Shorts command, plus: a REJECTED Short is chosen again with the reviewer's reasons (never reusing another Short's sentences or its own rejected ones), then a Short QC (20 to 58 s, captions incl. the spoken question vs what is heard, loudness, the on-screen text fitting, and a frame sheet Claude checks for cut-off pictures and unreadable text), one rebuild at most, and `shorts/short_N/upload.md` | 2 re-picks, 1 rebuild |
+| overseer (new) | a fresh Claude call that saw none of the above reads every report, re-checks the 3 to 5 riskiest claims at their sources, and writes `agents/VERDICT.md`: GO or NO-GO for the full video and for each Short, with exact fixes | none |
+
+- **Nobody approves but you.** No agent runs `approve`, uploads or posts. The overseer only recommends. Some things are never GO whatever it says: a stub run, a failed fact-check or quality check, a claim it found overstated at its source, a Short that was not built or failed its QC, or any Short while the full video is NO-GO.
+- **Nothing is deleted.** Anything an agent replaces (a picture, a recording, metadata.json, a rejected Short's file) moves to `out/<slug>/_replaced_<date>/` under the same path.
+- **Money:** before anything that costs money, the crew prints what it will spend now and the most extra if every retry is used, and asks. With no one to ask it stops unless you gave `--yes`. Claude steps use your Claude plan.
+- **When an agent can't fix something** the crew stops there, says what is wrong and how to fix it, and writes a NO-GO verdict. Fix it, then run `python -m pipeline crew --slug <slug>`.
+- **A re-run re-checks and fixes; it never rewrites a script or redraws pictures that exist and passed.** For that, use `run --from` as before.
+- **Shorts results:** `shorts-results` asks for views, average view duration, length, % swiped away and subscribers (or pass `--views --avg --length --swiped --subs`). It saves `out/<slug>/shorts/results.json` and writes `out/SHORTS_RESULTS.md`, every Short on the channel ranked by how much of it people watched. The Shorts picker reads these results every time it chooses Shorts.
+
 ## Rules to remember
 
 - **Script shape:** a hook about the viewer ("you") with a surprising number, the video's question within about 30 seconds, no channel intro, the video, and one like-and-subscribe sentence naming the channel as the last line. Never ask for the subscribe in the middle.
