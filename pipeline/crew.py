@@ -897,7 +897,16 @@ def agent_shorts(v: Video, a, rep: Report, forced: bool) -> None:
 # --- 7. overseer (new) -------------------------------------------------------------------
 
 def _read(p: Path, limit: int = 20000) -> str:
+    """Text for the overseer's prompt, cut to `limit` characters. Never parse the result as JSON: use _read_json."""
     return p.read_text()[:limit] if p.exists() else "(missing)"
+
+
+def _read_json(p: Path, default):
+    """A whole JSON file (never a cut-off copy), or the default if it is missing or unreadable."""
+    try:
+        return json.loads(p.read_text()) if p.exists() else default
+    except ValueError:
+        return default
 
 
 def agent_overseer(v: Video, a, rep: Report, forced: bool) -> dict:
@@ -908,13 +917,13 @@ def agent_overseer(v: Video, a, rep: Report, forced: bool) -> dict:
         if r:
             reports.append(f"## {name}\n" + json.dumps({k: r[k] for k in r if k != "details"} | {"details": {
                 k: x for k, x in r.get("details", {}).items() if k != "sections"}}, indent=1, ensure_ascii=False)[:6000])
-    fc = json.loads(_read(d / "factcheck.json")) if (d / "factcheck.json").exists() else {}
+    fc = _read_json(d / "factcheck.json", {})
     fc_short = {"passed": fc.get("passed"), "facts": fc.get("facts", []), "policy": fc.get("policy", []),
                 "audit_problems": (fc.get("audit") or {}).get("problems", [])}
-    meta = json.loads(_read(d / "metadata.json")) if (d / "metadata.json").exists() else {}
-    tl = json.loads(_read(d / "timeline.json")) if (d / "timeline.json").exists() else {}
+    meta = _read_json(d / "metadata.json", {})
+    tl = _read_json(d / "timeline.json", {})
     stub = a.stub or tl.get("voice") == "stub"
-    plan = json.loads(_read(d / "shorts" / "plan.json")) if (d / "shorts" / "plan.json").exists() else {"shorts": []}
+    plan = _read_json(d / "shorts" / "plan.json", {"shorts": []})
     shorts_rep = (read_report(v, "shorts") or {}).get("details", {}).get("shorts", {})
     blocks = []
     for n, it in enumerate(plan.get("shorts", []), start=1):
@@ -1065,6 +1074,10 @@ def cmd_crew(a) -> Video | None:
             AGENT_FUNCS[name](v, a, rep, forced)
         except StageError as e:
             rep.fail(str(e))
+        except Exception as e:  # a bug in an agent must still leave a report and a NO-GO, not a bare traceback
+            import traceback
+            log(traceback.format_exc())
+            rep.fail(f"The {name} agent hit an unexpected error ({type(e).__name__}: {e}). This is a bug in the crew, not in your video.")
         rep.write(v)
         if not rep.passed and name in STOPPING:
             write_stopped_verdict(v, name, rep)

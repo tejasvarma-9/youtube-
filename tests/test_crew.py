@@ -295,6 +295,34 @@ class CrewParts(unittest.TestCase):
         self.assertEqual(crew.usable_fix("Remove the word revenue and rethink the whole label", "thumbnail_after"), "")
         self.assertEqual(crew.usable_fix("THEY SELL LEADS", "thumbnail_text"), "THEY SELL LEADS")
 
+    def test_overseer_reads_files_bigger_than_its_prompt_limit(self):
+        # A real fact-check is far bigger than the 20,000 characters the overseer puts in its prompt.
+        facts = [{"id": f"F{k}", "verdict": "SUPPORTED", "note": "x" * 200} for k in range(200)]
+        (self.d / "factcheck.json").write_text(json.dumps({"passed": True, "facts": facts}))
+        (self.d / "qc.json").write_text(json.dumps({"passed": True}))
+        big = json.loads((self.d / "timeline.json").read_text())
+        big["pad"] = "y" * 60000
+        (self.d / "timeline.json").write_text(json.dumps(big))
+        sent = []
+        real = llm.ask
+        rep = crew.Report("overseer", self.slug)
+        with mock.patch.object(llm, "ask", lambda t, k, **kw: (sent.append(t), real(t, k, **kw))[1]):
+            crew.agent_overseer(self.v, _args(stub=True), rep, False)
+        self.assertEqual(len(sent), 1)
+        self.assertTrue((self.d / "agents" / "VERDICT.md").exists())
+
+    def test_an_unexpected_error_in_an_agent_leaves_a_report_and_no_go(self):
+        (self.d / "factcheck.json").write_text(json.dumps({"passed": True}))
+        with mock.patch.object(crew, "start", return_value=self.v), \
+                mock.patch.object(crew, "confirm_cost"), \
+                mock.patch.dict(crew.AGENT_FUNCS, {"script_factcheck": mock.Mock(side_effect=KeyError("boom"))}):
+            with self.assertRaises(StageError):
+                crew.cmd_crew(_args(stub=True))
+        r = json.loads((self.d / "agents" / "script_factcheck.json").read_text())
+        self.assertFalse(r["passed"])
+        self.assertIn("unexpected error", r["could_not_fix"][0])
+        self.assertEqual(json.loads((self.d / "agents" / "VERDICT.json").read_text())["full_video"]["verdict"], "NO-GO")
+
     def test_cost_estimate_and_confirmation(self):
         rows = crew.estimate(self.v, _args())
         self.assertTrue(any("Pictures" in r[0] for r in rows))
