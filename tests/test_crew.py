@@ -271,6 +271,30 @@ class CrewParts(unittest.TestCase):
         self.assertEqual(json.loads((replaced_dir(self.d) / "metadata.json").read_text())["thumbnail_text"], "AD REVENUE")
         self.assertEqual(thumb.call_count, 2)
 
+    def test_packaging_fixes_the_small_thumbnail_label_named_in_prose(self):
+        # What a real run produced: the check calls it "Thumbnail text (small label)" and answers in a sentence.
+        (self.d / "metadata.json").write_text(json.dumps({"title": "T", "thumbnail_text": "$2.6B REVENUE",
+                                                          "thumbnail_before": "FREE SCORE", "thumbnail_after": "AD REVENUE",
+                                                          "description_intro": "D"}))
+        (self.d / "video.mp4").write_bytes(b"mp4")
+        bad = {"passed": False, "failures": ["x"], "warnings": [], "checks": {"claude_review": {"claims": [
+            {"where": "Thumbnail text (small label)", "text": "AD REVENUE", "verdict": "OVERSTATED", "note": "n",
+             "fix": "Replace 'AD REVENUE' with 'WHO PAYS?' or 'PAID BY ADVERTISERS?'"}]}}}
+        results = iter([bad, {"passed": True, "failures": [], "warnings": [], "checks": {}}])
+        rep = crew.Report("packaging", self.slug)
+        with mock.patch.object(crew.s6_assemble, "run"), mock.patch.object(crew.s7_metadata, "run"), \
+                mock.patch.object(crew.s8_thumbnail, "run"), mock.patch.object(crew.s9_review, "run"), \
+                mock.patch.object(crew.s10_qc, "run", side_effect=lambda *a, **k: next(results)):
+            crew.agent_packaging(self.v, _args(stub=True), rep, False)
+        meta = json.loads((self.d / "metadata.json").read_text())
+        self.assertEqual((meta["thumbnail_after"], meta["thumbnail_text"]), ("WHO PAYS?", "$2.6B REVENUE"))
+        self.assertTrue(rep.passed)
+
+    def test_usable_fix_refuses_prose(self):
+        self.assertEqual(crew.usable_fix("Cut it.", "thumbnail_after"), "")
+        self.assertEqual(crew.usable_fix("Remove the word revenue and rethink the whole label", "thumbnail_after"), "")
+        self.assertEqual(crew.usable_fix("THEY SELL LEADS", "thumbnail_text"), "THEY SELL LEADS")
+
     def test_cost_estimate_and_confirmation(self):
         rows = crew.estimate(self.v, _args())
         self.assertTrue(any("Pictures" in r[0] for r in rows))

@@ -577,6 +577,34 @@ def agent_images(v: Video, a, rep: Report, forced: bool) -> None:
 # --- 5. packaging ----------------------------------------------------------------------
 
 CLAIM_FIELDS = {"title": "title", "thumbnail text": "thumbnail_text", "description opening": "description_intro"}
+FIX_MAX_CHARS = {"title": 100, "thumbnail_text": 40, "thumbnail_before": 24, "thumbnail_after": 24, "description_intro": 400}
+
+
+def claim_field(meta: dict, claim: dict) -> str | None:
+    """Which metadata field a claim is about: the field holding exactly the words quoted, else the name the
+    quality check gave it ("Thumbnail text (small label)" counts as the thumbnail text)."""
+    quoted = " ".join(str(claim.get("text", "")).split()).lower()
+    if quoted:
+        for f in FIX_MAX_CHARS:
+            if " ".join(str(meta.get(f, "")).split()).lower() == quoted:
+                return f
+    where = str(claim.get("where", "")).strip().lower()
+    for name, f in CLAIM_FIELDS.items():
+        if where.startswith(name):
+            return f
+    return None
+
+
+def usable_fix(fix: str, field: str) -> str:
+    """The replacement wording itself. The quality check sometimes answers in a sentence ("Replace 'X' with 'Y' or 'Z'");
+    the first quoted wording after "with" / "to" / "use" is taken then. Prose that can't be read that way is not applied."""
+    fix = " ".join(str(fix).split())
+    m = re.match(r"(?i)(?:replace|change|use|say|rewrite)\b.*?\b(?:with|to|as)\s+['\"\u2018\u201c]([^'\"\u2019\u201d]+)['\"\u2019\u201d]", fix)
+    if m:
+        fix = m.group(1).strip()
+    elif re.match(r"(?i)(replace|change|use|say|rewrite|remove|drop|delete|cut|omit|avoid|reword|rephrase|consider)\b", fix):
+        return ""
+    return fix if 0 < len(fix) <= FIX_MAX_CHARS.get(field, 100) else ""
 
 
 def agent_packaging(v: Video, a, rep: Report, forced: bool) -> None:
@@ -593,11 +621,11 @@ def agent_packaging(v: Video, a, rep: Report, forced: bool) -> None:
         meta = v.read_json("metadata.json")
         changes = []
         for c in claims:
-            field = CLAIM_FIELDS.get(str(c.get("where", "")).strip().lower())
-            fix = " ".join(str(c.get("fix", "")).split())
+            field = claim_field(meta, c)
+            fix = usable_fix(c.get("fix", ""), field) if field else ""
             if field and fix and c.get("verdict") not in ("SUPPORTED", "OK") and meta.get(field) != fix:
                 changes.append((field, meta.get(field, ""), fix, c.get("note", "")))
-                meta[field] = fix
+                meta[field] = fix.upper() if field.startswith("thumbnail") else fix
         if changes:
             for name in ("metadata.json", "description.txt", "thumbnail.png"):
                 retire(v.dir / name)
