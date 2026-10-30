@@ -312,7 +312,7 @@ Seven agents run in order. Each writes `out/<slug>/agents/<agent>.md` (what it c
 | script_factcheck | script, then fact-check with the independent audit; a failed check is revised | 3 revisions |
 | voice_captions | voice, then a speech recognizer listens: caption lines far off the voice and runs of words it never heard (garbled or skipped speech) get those lines re-recorded | 2 |
 | images | shot list and pictures, then Claude looks at every picture; pictures with a serious problem are moved aside and redrawn, with the problem added to their scene | 2 |
-| packaging | assemble, metadata, thumbnail, the full quality check and the review package; a fix the quality check gives for the title, thumbnail text or description is applied once | 1 |
+| packaging | assemble, metadata, thumbnail, the full quality check and the review package; fixes the quality check gives for the title, thumbnail text or description are applied, then it checks again | 2 rounds |
 | shorts | the Shorts command, plus: a REJECTED Short is chosen again with the reviewer's reasons (never reusing another Short's sentences or its own rejected ones), then a Short QC (20 to 58 s, captions incl. the spoken question vs what is heard, loudness, the on-screen text fitting, and a frame sheet Claude checks for cut-off pictures and unreadable text), one rebuild at most, and `shorts/short_N/upload.md` | 2 re-picks, 1 rebuild |
 | overseer (new) | a fresh Claude call that saw none of the above reads every report, re-checks the 3 to 5 riskiest claims at their sources, and writes `agents/VERDICT.md`: GO or NO-GO for the full video and for each Short, with exact fixes | none |
 

@@ -54,6 +54,7 @@ MAX_IMAGE_RETRIES = 2
 MAX_IMAGES_PER_RETRY = 12        # likewise for pictures
 MAX_REPICKS = 2
 MAX_SHORT_REBUILDS = 1
+MAX_CLAIM_FIX_ROUNDS = 2         # the quality check often finds a new line to flag after each fix
 SCOUT_MIN, SCOUT_MAX = 3, 5
 SCOUT_MIN_SOURCES = 3
 WORDS_PER_MINUTE = 180           # the narrator's measured pace
@@ -616,7 +617,9 @@ def agent_packaging(v: Video, a, rep: Report, forced: bool) -> None:
     qc = s10_qc.run(v, stub=a.stub)
     rep.checked.append(f"full quality check: {'PASSED' if qc['passed'] else 'FAILED'} "
                        f"({len(qc['failures'])} problems, {len(qc['warnings'])} warnings)")
-    if not qc["passed"]:
+    for round_no in range(1, MAX_CLAIM_FIX_ROUNDS + 1):
+        if qc["passed"]:
+            break
         claims = (qc.get("checks", {}).get("claude_review") or {}).get("claims", [])
         meta = v.read_json("metadata.json")
         changes = []
@@ -626,17 +629,18 @@ def agent_packaging(v: Video, a, rep: Report, forced: bool) -> None:
             if field and fix and c.get("verdict") not in ("SUPPORTED", "OK") and meta.get(field) != fix:
                 changes.append((field, meta.get(field, ""), fix, c.get("note", "")))
                 meta[field] = fix.upper() if field.startswith("thumbnail") else fix
-        if changes:
-            for name in ("metadata.json", "description.txt", "thumbnail.png"):
-                retire(v.dir / name)
-            v.write_json("metadata.json", meta)
-            s7_metadata.run(v, stub=a.stub)  # keeps the edited lines, rebuilds description.txt
-            s8_thumbnail.run(v, stub=a.stub)
-            for field, old, new, note in changes:
-                rep.fixed.append(f"{field}: \"{old}\" -> \"{new}\" (the quality check said: {note})")
-            qc = s10_qc.run(v, stub=a.stub)
-            rep.retries = 1
-            rep.checked.append(f"quality check after the fixes: {'PASSED' if qc['passed'] else 'FAILED'}")
+        if not changes:
+            break
+        for name in ("metadata.json", "description.txt", "thumbnail.png"):
+            retire(v.dir / name)
+        v.write_json("metadata.json", meta)
+        s7_metadata.run(v, stub=a.stub)  # keeps the edited lines, rebuilds description.txt
+        s8_thumbnail.run(v, stub=a.stub)
+        for field, old, new, note in changes:
+            rep.fixed.append(f"Round {round_no}, {field}: \"{old}\" -> \"{new}\" (the quality check said: {note})")
+        qc = s10_qc.run(v, stub=a.stub)
+        rep.retries = round_no
+        rep.checked.append(f"quality check after fix round {round_no}: {'PASSED' if qc['passed'] else 'FAILED'}")
     s9_review.run(v, stub=a.stub)
     rep.checked.append(f"review package written: out/{v.slug}/review/REVIEW.md")
     rep.details["video"] = s10_qc._video_id(v)
