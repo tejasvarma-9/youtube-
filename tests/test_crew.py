@@ -462,6 +462,14 @@ class TrendsTests(unittest.TestCase):
         self.assertNotIn("SECRET123", str(e.exception))
         self.assertIn("YouTube Data API v3", str(e.exception))
 
+    def test_a_gemini_only_key_gets_clear_instructions(self):
+        from pipeline import trends
+        res = mock.Mock(status_code=401, text="API keys are not supported by this API. Expected OAuth2 access token")
+        with mock.patch.object(trends.requests, "get", return_value=res):
+            with self.assertRaises(StageError) as e:
+                trends.YouTube("SECRET123").get("search", q="x")
+        self.assertIn("YOUTUBE_API_KEY", str(e.exception))
+
     def test_every_trends_placeholder_is_filled(self):
         for name, code in (("metadata.md", "s7_metadata.py"), ("shorts.md", "s11_shorts.py"), ("topic_scout.md", "crew.py")):
             self.assertIn("{{TRENDS}}", (config.PROMPTS / name).read_text())

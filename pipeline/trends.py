@@ -89,6 +89,12 @@ class YouTube:
                              "\"YouTube Data API v3\" at https://console.cloud.google.com/apis/library/youtube.googleapis.com "
                              "(same project as your key), and if the key is restricted to the Gemini API, allow YouTube "
                              "Data API v3 too. Or put a separate YOUTUBE_API_KEY in .env. Don't paste the key in chat.")
+        if res.status_code == 401:
+            raise StageError("YouTube refused this key (401: \"API keys are not supported by this API\"). The key in .env "
+                             "is most likely a Gemini/AI Studio key, which works for Gemini but not for the YouTube Data API. "
+                             "Make a plain API key once: https://console.cloud.google.com/apis/credentials, Create credentials, "
+                             "API key; under API restrictions pick only \"YouTube Data API v3\". Put it in .env as "
+                             "YOUTUBE_API_KEY=... (it is used instead of GOOGLE_API_KEY for trends). Don't paste it in chat.")
         if res.status_code == 403 and "quota" in text.lower():
             raise StageError("Today's free YouTube Data API quota is used up. Run it again tomorrow.")
         raise StageError(f"YouTube Data API {endpoint} returned {res.status_code}: {text}")
