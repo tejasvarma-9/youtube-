@@ -70,34 +70,181 @@ def api_key() -> str:
     return config.env("YOUTUBE_API_KEY") or config.GOOGLE_API_KEY
 
 
+# --- Google sign-in (OAuth) ------------------------------------------------------------
+# Accounts that can only make the newer "AQ." keys can't use a key for YouTube at all, so trends signs in with
+# your Google account instead: a Desktop OAuth client (client_secret.json in the repo folder, gitignored), a
+# one-time browser sign-in, and a saved token (token_youtube.json, gitignored). Read-only YouTube access.
+
+SCOPE = "https://www.googleapis.com/auth/youtube.readonly"
+SETUP = ("Set up the Google sign-in once (about 10 minutes, free):\n"
+         "  1. https://console.cloud.google.com/auth/overview, in the project where YouTube Data API v3 is turned on.\n"
+         "     Get started: app name \"Who Pays Who pipeline\", your email; audience External; add your own Gmail as a test user.\n"
+         "  2. Clients, Create client, type Desktop app, Create, then Download JSON.\n"
+         "  3. Save that file in the who-pays-who folder as client_secret.json (git ignores it).\n"
+         "  4. Run: python -m pipeline trends --login   (your browser opens once; sign in and allow read-only YouTube access).")
+
+
+def _client_file() -> Path | None:
+    files = sorted(config.ROOT.glob("client_secret*.json"))
+    return files[0] if files else None
+
+
+def _token_file() -> Path:
+    return config.ROOT / "token_youtube.json"
+
+
+def oauth_client() -> dict | None:
+    f = _client_file()
+    if not f:
+        return None
+    try:
+        data = json.loads(f.read_text())
+    except ValueError:
+        raise StageError(f"{f.name} isn't a valid JSON file. Download the OAuth client again (Desktop app).")
+    if "installed" not in data:
+        raise StageError(f"{f.name} is not a Desktop app client. Create a client of type Desktop app and download that one.\n" + SETUP)
+    return data["installed"]
+
+
+def _save_token(t: dict) -> None:
+    import os
+    p = _token_file()
+    p.write_text(json.dumps(t, indent=2) + "\n")
+    os.chmod(p, 0o600)
+
+
+def login(client: dict, timeout_s: int = 300) -> dict:
+    """The browser sign-in: Google sends you back to a small server on this Mac (127.0.0.1) with a one-time code."""
+    import base64
+    import hashlib
+    import http.server
+    import secrets
+    import time
+    import urllib.parse
+    import webbrowser
+
+    verifier = secrets.token_urlsafe(64)
+    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
+    state = secrets.token_urlsafe(16)
+    got: dict = {}
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            if "code" in q or "error" in q:
+                got.update({k: v[0] for k, v in q.items()})
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write("<p style='font-family:sans-serif'>Signed in. You can close this tab and go back to the terminal.</p>".encode())
+
+        def log_message(self, *args):
+            pass
+
+    srv = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+    srv.timeout = 2
+    redirect = f"http://127.0.0.1:{srv.server_port}/"
+    url = client.get("auth_uri", "https://accounts.google.com/o/oauth2/auth") + "?" + urllib.parse.urlencode({
+        "client_id": client["client_id"], "redirect_uri": redirect, "response_type": "code", "scope": SCOPE,
+        "access_type": "offline", "prompt": "consent", "code_challenge": challenge, "code_challenge_method": "S256",
+        "state": state})
+    log("  Opening your browser to sign in to Google (read-only YouTube access). If it doesn't open, paste this into it:\n  " + url)
+    webbrowser.open(url)
+    deadline = time.time() + timeout_s
+    try:
+        while not got and time.time() < deadline:
+            srv.handle_request()
+    finally:
+        srv.server_close()
+    if not got.get("code"):
+        raise StageError(f"The sign-in didn't finish ({got.get('error', 'no answer within 5 minutes')}). Run: python -m pipeline trends --login")
+    if got.get("state") != state:
+        raise StageError("The sign-in answer didn't match this request. Run: python -m pipeline trends --login")
+    res = requests.post(client.get("token_uri", "https://oauth2.googleapis.com/token"), timeout=60, data={
+        "code": got["code"], "client_id": client["client_id"], "client_secret": client.get("client_secret", ""),
+        "redirect_uri": redirect, "grant_type": "authorization_code", "code_verifier": verifier})
+    if res.status_code != 200:
+        raise StageError(f"Google refused the sign-in ({res.status_code}): {res.text[:300]}")
+    t = res.json()
+    t["expires_at"] = time.time() + int(t.get("expires_in", 3600))
+    _save_token(t)
+    log("  Signed in. The token is saved in token_youtube.json (git ignores it).")
+    return t
+
+
+def oauth_token(force_login: bool = False) -> str | None:
+    """A current access token, refreshing or signing in when needed; None when no OAuth client is set up."""
+    import sys
+    import time
+    client = oauth_client()
+    if not client:
+        if force_login:
+            raise StageError("There is no client_secret.json in the who-pays-who folder yet.\n" + SETUP)
+        return None
+    p = _token_file()
+    t = json.loads(p.read_text()) if p.exists() and not force_login else {}
+    if t.get("access_token") and t.get("expires_at", 0) > time.time() + 60:
+        return t["access_token"]
+    if t.get("refresh_token"):
+        res = requests.post(client.get("token_uri", "https://oauth2.googleapis.com/token"), timeout=60, data={
+            "client_id": client["client_id"], "client_secret": client.get("client_secret", ""),
+            "refresh_token": t["refresh_token"], "grant_type": "refresh_token"})
+        if res.status_code == 200:
+            new = res.json()
+            t.update(access_token=new["access_token"], expires_at=time.time() + int(new.get("expires_in", 3600)))
+            _save_token(t)
+            return t["access_token"]
+        log("  The saved sign-in has expired (apps in Testing mode need a new sign-in about every 7 days).")
+    if not force_login and not sys.stdin.isatty():
+        raise StageError("Google sign-in needed and there is no one to click it. Run: python -m pipeline trends --login")
+    return login(client)["access_token"]
+
+
 # --- YouTube Data API -------------------------------------------------------------
 
 class YouTube:
-    """A thin YouTube Data API client that counts quota units. The key never appears in logs or errors."""
+    """A thin YouTube Data API client that counts quota units. Uses a signed-in token, or else an API key.
+    Neither ever appears in logs or errors."""
 
-    def __init__(self, key: str):
-        self.key, self.units = key, 0
+    def __init__(self, key: str = "", token: str = ""):
+        self.key, self.token, self.units = key, token, 0
 
     def get(self, endpoint: str, **params) -> dict:
         self.units += UNITS[endpoint]
-        res = requests.get(f"{API}/{endpoint}", params={**params, "key": self.key}, timeout=60)
+        headers = {"Authorization": f"Bearer {self.token}"} if self.token else {}
+        query = {**params, **({"key": self.key} if self.key and not self.token else {})}
+        res = requests.get(f"{API}/{endpoint}", params=query, headers=headers, timeout=60)
         if res.status_code == 200:
             return res.json()
-        text = res.text.replace(self.key, "<key>")[:600]
+        text = res.text
+        for secret in (self.key, self.token):
+            if secret:
+                text = text.replace(secret, "<hidden>")
+        text = text[:600]
         if res.status_code == 403 and ("has not been used" in text or "disabled" in text or "blocked" in text):
-            raise StageError("The YouTube Data API is not turned on for your key's Google Cloud project. Turn on "
+            raise StageError("The YouTube Data API is not turned on for this Google Cloud project. Turn on "
                              "\"YouTube Data API v3\" at https://console.cloud.google.com/apis/library/youtube.googleapis.com "
-                             "(same project as your key), and if the key is restricted to the Gemini API, allow YouTube "
-                             "Data API v3 too. Or put a separate YOUTUBE_API_KEY in .env. Don't paste the key in chat.")
+                             "(the project your sign-in client or key belongs to). Don't paste keys in chat.")
+        if res.status_code == 401 and self.token:
+            raise StageError("YouTube didn't accept the saved sign-in. Run: python -m pipeline trends --login")
         if res.status_code == 401:
-            raise StageError("YouTube refused this key (401: \"API keys are not supported by this API\"). The key in .env "
-                             "is most likely a Gemini/AI Studio key, which works for Gemini but not for the YouTube Data API. "
-                             "Make a plain API key once: https://console.cloud.google.com/apis/credentials, Create credentials, "
-                             "API key; under API restrictions pick only \"YouTube Data API v3\". Put it in .env as "
-                             "YOUTUBE_API_KEY=... (it is used instead of GOOGLE_API_KEY for trends). Don't paste it in chat.")
+            raise StageError("YouTube refused this key (401: \"API keys are not supported by this API\"). Keys that start "
+                             "with AQ. (the newer kind Google gives many accounts) don't work for the YouTube Data API.\n" + SETUP)
         if res.status_code == 403 and "quota" in text.lower():
             raise StageError("Today's free YouTube Data API quota is used up. Run it again tomorrow.")
         raise StageError(f"YouTube Data API {endpoint} returned {res.status_code}: {text}")
+
+
+def client_for_run() -> YouTube:
+    token = oauth_token()
+    if token:
+        return YouTube(token=token)
+    key = api_key()
+    if key.startswith("AQ."):
+        raise StageError("Your YouTube key starts with AQ., a kind of key the YouTube Data API doesn't accept.\n" + SETUP)
+    if not key:
+        raise StageError("No way to reach YouTube yet.\n" + SETUP)
+    return YouTube(key=key)
 
 
 def _seconds(iso: str) -> int:
@@ -285,10 +432,7 @@ def run(stub: bool = False, queries: list[str] | None = None, days: int = SEARCH
     if stub:
         data, units = stubs.youtube_data(), 0
     else:
-        key = api_key()
-        if not key:
-            raise StageError("No YouTube Data API key: set YOUTUBE_API_KEY (or GOOGLE_API_KEY) in .env. Don't paste it in chat.")
-        yt = YouTube(key)
+        yt = client_for_run()
         log(f"[trends] searching YouTube for {len(queries)} queries (about {len(queries) * 2 * 100} quota units of 10,000 a day)...")
         data = collect(yt, queries, days)
         units = yt.units

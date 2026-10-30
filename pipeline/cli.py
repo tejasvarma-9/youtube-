@@ -257,6 +257,7 @@ def main(argv=None) -> int:
     rs.add_argument("--when", help="date the numbers were read, e.g. 2026-10-24 (default: today)")
     tr = sub.add_parser("trends", help="what is working for similar channels, and proposed changes for ours (YouTube Data API, free)")
     tr.add_argument("--apply", type=int, metavar="N", help="apply proposal N of the latest trends report to its prompt file")
+    tr.add_argument("--login", action="store_true", help="sign in to Google again (read-only YouTube access), then stop")
     tr.add_argument("--queries", help="comma-separated YouTube searches to use instead of the defaults")
     tr.add_argument("--days", type=int, default=150, help="only videos published in the last this many days")
     sub.add_parser("status", help="list videos and which stages are done")
@@ -309,7 +310,9 @@ def main(argv=None) -> int:
             crew.cmd_shorts_results(a)
         elif a.cmd == "trends":
             from . import trends
-            if a.apply:
+            if a.login:
+                trends.oauth_token(force_login=True)
+            elif a.apply:
                 trends.apply(a.apply, stub=a.stub)
             else:
                 trends.run(stub=a.stub, queries=[q.strip() for q in a.queries.split(",")] if a.queries else None, days=a.days)

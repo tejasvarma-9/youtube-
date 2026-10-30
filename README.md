@@ -334,7 +334,12 @@ python -m pipeline trends --apply 2    # apply proposal 2 from the latest report
 - **What Claude compares:** titles, thumbnails (it opens the images), length, topic and age of the outliers against the flops on the same channels. A pattern counts only if the outliers share it and the flops lack it. It can't watch videos, so it says nothing about hooks or scripts.
 - **What changes:** nothing, until you say so. The report's short notes for writers go to the topic scout, the title and thumbnail writer and the Shorts picker as background for 21 days. Concrete edits to `prompts/` or `voice.md` are shown as before and after with their evidence; `--apply N` makes one, keeps the old file in `out/_crew/_replaced_<date>/prompts/`, and you commit it yourself.
 - **Stay distinct:** every proposal must say how it keeps Who Pays Who recognisably itself. A proposal that copies another channel's title formula, thumbnail layout or character is dropped: YouTube's inauthentic-content policy demonetizes templated, mass-produced videos.
-- **Setup (once):** a Gemini key from AI Studio does not work for the YouTube Data API (YouTube answers 401). Make a plain key at https://console.cloud.google.com/apis/credentials (Create credentials, API key), restrict it to "YouTube Data API v3" (turn that API on first: https://console.cloud.google.com/apis/library/youtube.googleapis.com), and put it in `.env` as `YOUTUBE_API_KEY=...`. Free: one run uses about 1,500 of the 10,000 quota units a day. Never paste the key in chat.
+- **Setup (once): Google sign-in.** Google now gives many accounts only "AQ." keys, which the YouTube Data API refuses, so trends signs in with your Google account instead (read-only YouTube access):
+  1. Turn on "YouTube Data API v3": https://console.cloud.google.com/apis/library/youtube.googleapis.com
+  2. https://console.cloud.google.com/auth/overview in the same project. Get started: app name "Who Pays Who pipeline", your email, audience External, add your own Gmail as a test user.
+  3. Clients, Create client, type **Desktop app**, Create, Download JSON. Save it in this folder as `client_secret.json` (git ignores it).
+  4. `python -m pipeline trends --login` opens your browser once. The token is saved in `token_youtube.json` (git ignores it). While the app is in Testing mode Google asks you to sign in again about every 7 days; trends says when.
+  A classic `AIza...` key in `.env` as `YOUTUBE_API_KEY` also works, if your account can still make one. Free either way: one run uses about 1,500 of the 10,000 quota units a day. Never paste keys or tokens in chat.
 - **Output:** `out/_crew/trends_<date>.md` (read this), `trends_<date>.json`, and the thumbnails and raw data in `out/_crew/trends/<date>/`.
 
 ## Rules to remember

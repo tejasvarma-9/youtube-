@@ -468,7 +468,78 @@ class TrendsTests(unittest.TestCase):
         with mock.patch.object(trends.requests, "get", return_value=res):
             with self.assertRaises(StageError) as e:
                 trends.YouTube("SECRET123").get("search", q="x")
-        self.assertIn("YOUTUBE_API_KEY", str(e.exception))
+        self.assertIn("client_secret.json", str(e.exception))
+
+    def test_aq_key_without_sign_in_explains_the_setup(self):
+        from pipeline import trends
+        with mock.patch.object(trends, "api_key", return_value="AQ.Abcdef"):
+            with self.assertRaises(StageError) as e:
+                trends.client_for_run()
+        self.assertIn("Desktop app", str(e.exception))
+
+    def _client_secret(self):
+        (self.tmp / "client_secret.json").write_text(json.dumps({"installed": {
+            "client_id": "cid", "client_secret": "csec", "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token"}}))
+
+    def test_browser_sign_in_saves_a_private_token(self):
+        import threading
+        import urllib.parse
+        import urllib.request
+        from pipeline import trends
+        self._client_secret()
+
+        def browser(url):
+            q = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
+            self.assertEqual(q["scope"], [trends.SCOPE])
+            self.assertEqual(q["code_challenge_method"], ["S256"])
+            back = q["redirect_uri"][0] + "?" + urllib.parse.urlencode({"code": "the-code", "state": q["state"][0]})
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            threading.Thread(target=lambda: opener.open(back, timeout=10).read(), daemon=True).start()
+            return True
+
+        exchange = mock.Mock(status_code=200)
+        exchange.json.return_value = {"access_token": "at1", "refresh_token": "rt1", "expires_in": 3600}
+        with mock.patch("webbrowser.open", side_effect=browser), \
+                mock.patch.object(trends.requests, "post", return_value=exchange) as post:
+            self.assertEqual(cli.main(["trends", "--login"]), 0)
+        sent = post.call_args.kwargs["data"]
+        self.assertEqual((sent["code"], sent["grant_type"]), ("the-code", "authorization_code"))
+        self.assertTrue(sent["code_verifier"])
+        tok = self.tmp / "token_youtube.json"
+        self.assertEqual(json.loads(tok.read_text())["refresh_token"], "rt1")
+        self.assertEqual(tok.stat().st_mode & 0o777, 0o600)
+
+    def test_saved_sign_in_is_reused_and_refreshed(self):
+        import time
+        from pipeline import trends
+        self._client_secret()
+        tok = self.tmp / "token_youtube.json"
+        tok.write_text(json.dumps({"access_token": "fresh", "refresh_token": "rt", "expires_at": time.time() + 3000}))
+        with mock.patch.object(trends.requests, "post", side_effect=AssertionError("no network needed")):
+            self.assertEqual(trends.oauth_token(), "fresh")
+        tok.write_text(json.dumps({"access_token": "old", "refresh_token": "rt", "expires_at": 0}))
+        refreshed = mock.Mock(status_code=200)
+        refreshed.json.return_value = {"access_token": "new", "expires_in": 3600}
+        with mock.patch.object(trends.requests, "post", return_value=refreshed):
+            self.assertEqual(trends.oauth_token(), "new")
+        self.assertEqual(json.loads(tok.read_text())["refresh_token"], "rt")
+        # Expired and refused, with no one to click: a clear instruction, not a hang.
+        tok.write_text(json.dumps({"access_token": "old", "refresh_token": "dead", "expires_at": 0}))
+        with mock.patch.object(trends.requests, "post", return_value=mock.Mock(status_code=400, text="invalid_grant")), \
+                mock.patch("sys.stdin", io.StringIO("")):
+            with self.assertRaises(StageError) as e:
+                trends.oauth_token()
+        self.assertIn("--login", str(e.exception))
+
+    def test_signed_in_requests_send_a_token_not_a_key(self):
+        from pipeline import trends
+        ok = mock.Mock(status_code=200)
+        ok.json.return_value = {"items": []}
+        with mock.patch.object(trends.requests, "get", return_value=ok) as get:
+            trends.YouTube(token="tok123").get("search", q="x")
+        self.assertEqual(get.call_args.kwargs["headers"], {"Authorization": "Bearer tok123"})
+        self.assertNotIn("key", get.call_args.kwargs["params"])
 
     def test_every_trends_placeholder_is_filled(self):
         for name, code in (("metadata.md", "s7_metadata.py"), ("shorts.md", "s11_shorts.py"), ("topic_scout.md", "crew.py")):
