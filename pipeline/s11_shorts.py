@@ -29,7 +29,7 @@ import os
 import re
 import subprocess
 
-from . import config, llm
+from . import config, llm, trends
 from .common import (StageError, Video, extract_json, fill, fmt_ts, log, media_duration, prompt, retire, run as sh,
                      split_sentences, voice_profile)
 from .lint import _numbers
@@ -320,7 +320,7 @@ def choose(video: Video, count: int, stub: bool = False, exclude=(), feedback: s
     lines = "\n".join(f"[{s['i']}] ({s['start']:.1f}s, {length_of(s):.1f}s) {s['text']}" for s in sentences)
     base = fill(prompt("shorts.md"), MIN_S=f"{config.SHORT_MIN_S:.0f}", MAX_S=f"{config.SHORT_MAX_S:.0f}", VOICE=voice_profile(),
                 TITLE=title, SENTENCES=lines, BLOCKED=", ".join(str(i) for i in sorted(blocked)) or "none", COUNT=str(count),
-                PAST_RESULTS=past_results_text())
+                PAST_RESULTS=past_results_text(), TRENDS=trends.writer_notes(stub))
     if feedback:
         base += ("\n\nA reviewer who did not choose them REJECTED an earlier choice for this Short, for these reasons. "
                  "Choose different sentences that avoid every one of these problems:\n" + feedback.strip() + "\n")

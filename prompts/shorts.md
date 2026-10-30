@@ -20,6 +20,11 @@ How earlier Shorts on this channel did, best held first. Retention is the share 
 {{PAST_RESULTS}}
 </past_results>
 
+<what_is_working_elsewhere>
+Background from the latest trends report: what beat its own channel's usual views on similar channels lately. Evidence, not rules: our voice profile and rules above always win, and never copy another channel's formula.
+{{TRENDS}}
+</what_is_working_elsewhere>
+
 Pick {{COUNT}} different Shorts. Each Short is a list of sentence numbers in increasing order. They do not have to be neighbours, but every sentence you keep must still make sense after the ones between them are cut.
 
 Rules for every Short:

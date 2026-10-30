@@ -323,6 +323,20 @@ Seven agents run in order. Each writes `out/<slug>/agents/<agent>.md` (what it c
 - **A re-run re-checks and fixes; it never rewrites a script or redraws pictures that exist and passed.** For that, use `run --from` as before.
 - **Shorts results:** `shorts-results` asks for views, average view duration, length, % swiped away and subscribers (or pass `--views --avg --length --swiped --subs`). It saves `out/<slug>/shorts/results.json` and writes `out/SHORTS_RESULTS.md`, every Short on the channel ranked by how much of it people watched. The Shorts picker reads these results every time it chooses Shorts.
 
+## Trends: what is working for similar channels (weekly)
+
+```bash
+python -m pipeline trends              # search, measure, compare, propose; changes nothing
+python -m pipeline trends --apply 2    # apply proposal 2 from the latest report to its prompt file
+```
+
+- **What it measures:** it searches YouTube for business and money explainers (long videos and Shorts from the last 150 days), reads each channel's recent uploads, and scores every video against its own channel's median views. An outlier got at least 2x, a flop at most 0.5x. Raw views mostly measure how big a channel is; the ratio measures the video.
+- **What Claude compares:** titles, thumbnails (it opens the images), length, topic and age of the outliers against the flops on the same channels. A pattern counts only if the outliers share it and the flops lack it. It can't watch videos, so it says nothing about hooks or scripts.
+- **What changes:** nothing, until you say so. The report's short notes for writers go to the topic scout, the title and thumbnail writer and the Shorts picker as background for 21 days. Concrete edits to `prompts/` or `voice.md` are shown as before and after with their evidence; `--apply N` makes one, keeps the old file in `out/_crew/_replaced_<date>/prompts/`, and you commit it yourself.
+- **Stay distinct:** every proposal must say how it keeps Who Pays Who recognisably itself. A proposal that copies another channel's title formula, thumbnail layout or character is dropped: YouTube's inauthentic-content policy demonetizes templated, mass-produced videos.
+- **Setup (once):** turn on "YouTube Data API v3" for the Google Cloud project behind your `GOOGLE_API_KEY` (https://console.cloud.google.com/apis/library/youtube.googleapis.com), or put a separate `YOUTUBE_API_KEY` in `.env`. Free: one run uses about 1,500 of the 10,000 quota units a day. Never paste the key in chat.
+- **Output:** `out/_crew/trends_<date>.md` (read this), `trends_<date>.json`, and the thumbnails and raw data in `out/_crew/trends/<date>/`.
+
 ## Rules to remember
 
 - **Script shape:** a hook about the viewer ("you") with a surprising number, the video's question within about 30 seconds, no channel intro, the video, and one like-and-subscribe sentence naming the channel as the last line. Never ask for the subscribe in the middle.

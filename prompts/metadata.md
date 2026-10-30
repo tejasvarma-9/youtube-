@@ -12,6 +12,11 @@ You write the YouTube packaging for Who Pays Who. The voice profile is below; fo
 {{SOURCES}}
 </sources>
 
+<what_is_working_elsewhere>
+Background from the latest trends report: what beat its own channel's usual views on similar channels lately. Evidence, not rules: our voice profile and rules above always win, and never copy another channel's formula.
+{{TRENDS}}
+</what_is_working_elsewhere>
+
 Write:
 - title_options: 3 candidate titles, each under 60 characters, all in the voice profile's single title template ("Who Really Pays for ___?"). Vary how the subject is named and whether a fact-list number is included.
 - title: the best of the three.

@@ -255,6 +255,10 @@ def main(argv=None) -> int:
     rs.add_argument("--swiped", help="percent swiped away, e.g. 49")
     rs.add_argument("--subs", type=int, help="subscribers gained")
     rs.add_argument("--when", help="date the numbers were read, e.g. 2026-10-24 (default: today)")
+    tr = sub.add_parser("trends", help="what is working for similar channels, and proposed changes for ours (YouTube Data API, free)")
+    tr.add_argument("--apply", type=int, metavar="N", help="apply proposal N of the latest trends report to its prompt file")
+    tr.add_argument("--queries", help="comma-separated YouTube searches to use instead of the defaults")
+    tr.add_argument("--days", type=int, default=150, help="only videos published in the last this many days")
     sub.add_parser("status", help="list videos and which stages are done")
     sub.add_parser("doctor", help="check that this Mac is set up")
     vt = sub.add_parser("voice-test", help="a short sample in several voices to choose from (about 1 cent)")
@@ -303,6 +307,12 @@ def main(argv=None) -> int:
             crew.cmd_crew(a)
         elif a.cmd == "shorts-results":
             crew.cmd_shorts_results(a)
+        elif a.cmd == "trends":
+            from . import trends
+            if a.apply:
+                trends.apply(a.apply, stub=a.stub)
+            else:
+                trends.run(stub=a.stub, queries=[q.strip() for q in a.queries.split(",")] if a.queries else None, days=a.days)
         elif a.cmd == "status":
             cmd_status()
         elif a.cmd == "doctor":

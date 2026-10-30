@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import hashlib
 
-from . import config, llm
+from . import config, llm, trends
 from .common import StageError, Video, extract_json, fill, fmt_ts, log, prompt, voice_profile
 from .lint import lint_title, validate_chapters
 
@@ -29,7 +29,8 @@ def run(video: Video, stub: bool = False) -> None:
         log("  keeping the title, thumbnail text and description in metadata.json (script wording edited, same sentences)"
             if not same_script else "  keeping the title, thumbnail text and description in metadata.json (script unchanged)")
     else:
-        text = fill(prompt("metadata.md"), VOICE=voice_profile(), TIMED_SCRIPT=timed, SOURCES=video.read_text("sources.txt"))
+        text = fill(prompt("metadata.md"), VOICE=voice_profile(), TIMED_SCRIPT=timed, SOURCES=video.read_text("sources.txt"),
+                    TRENDS=trends.writer_notes(stub))
         answer = llm.ask(text, "metadata", stub=stub, context={"sentence_count": len(sents)})
         video.path("raw", "metadata_answer.md").write_text(answer)
         meta = extract_json(answer)

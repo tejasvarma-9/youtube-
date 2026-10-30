@@ -6,6 +6,11 @@ Topics already made (never propose these, or the same business with a reworded t
 Topics proposed in the last 8 weeks (do not propose them again):
 {{RECENT}}
 
+<what_is_working_elsewhere>
+Background from the latest trends report: what beat its own channel's usual views on similar channels lately. Evidence, not rules: our voice profile and rules above always win, and never copy another channel's formula.
+{{TRENDS}}
+</what_is_working_elsewhere>
+
 For each topic give:
 1. topic: "How X makes money", or a sharper question in the channel's style ("Who really pays for ...?"). A real business or product, never a placeholder.
 2. angle: ONE original insight the numbers support: a calculation, a comparison of two companies, or a contrarian conclusion. Say it no more strongly than the sources do. Prefer companies with results from the last two quarters.

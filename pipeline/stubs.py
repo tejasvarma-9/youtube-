@@ -112,6 +112,16 @@ def llm_answer(kind: str, ctx: dict) -> str:
                                         "supports": "stub"} for k in (1, 2, 3)],
                            "news": [], "why_now": "stub"})
         return "===JSON===\n" + json.dumps({"topics": topics}) + "\n===END==="
+    if kind == "trends":
+        return "===JSON===\n" + json.dumps({
+            "patterns": [{"pattern": "Stub pattern", "applies_to": "titles", "evidence": ["Av10", "Bv10"],
+                          "counter_evidence": "Av11", "confidence": "low"}],
+            "notes_for_writers": "Stub note: nothing real was measured.",
+            "proposals": [{"title": "Stub tag rule", "file": "prompts/shorts.md", "before": "- tags: 3 to 6 search phrases.",
+                           "after": "- tags: 3 to 6 search phrases people really type.", "why": "stub", "evidence": ["Av30"],
+                           "keeps_us_distinct": "stub", "template_risk": ""},
+                          {"title": "Not allowed", "file": "pipeline/cli.py", "before": "x", "after": "y", "why": "stub",
+                           "evidence": [], "keeps_us_distinct": "stub", "template_risk": ""}]}) + "\n===END==="
     if kind in ("crew_images",):
         return "===JSON===\n" + json.dumps({"images": []}) + "\n===END==="
     if kind == "crew_short_qc":
@@ -122,6 +132,27 @@ def llm_answer(kind: str, ctx: dict) -> str:
             "shorts": [{"short": n, "verdict": "GO", "reasons": ["stub run"], "fixes": []} for n in ctx.get("shorts", [])],
             "rechecked_claims": [], "summary": "Stub run: nothing was really checked."}) + "\n===END==="
     raise ValueError(f"no stub for {kind}")
+
+
+def youtube_data() -> dict:
+    """Two made-up channels with a hit and some flops each, for --stub runs of the trends agent."""
+    from datetime import datetime, timedelta, timezone
+    today = datetime.now(timezone.utc)
+
+    def vid(cid, n, views, secs, days):
+        return {"id": f"{cid}v{n}", "title": f"Stub video {n} from {cid}", "channel_id": cid, "channel": f"Stub channel {cid}",
+                "published": (today - timedelta(days=days)).strftime("%Y-%m-%d"), "views": views, "likes": 0, "comments": 0,
+                "seconds": secs, "short": secs <= 180, "thumbnail_url": "", "url": f"https://www.youtube.com/watch?v={cid}v{n}"}
+
+    uploads = {}
+    for cid in ("A", "B"):
+        vids = [vid(cid, n, 20000, 600, 20 + n) for n in range(1, 7)]
+        vids += [vid(cid, 10, 150000, 640, 30), vid(cid, 11, 6000, 590, 40)]
+        vids += [vid(cid, 20 + n, 4000, 45, 15 + n) for n in range(5)] + [vid(cid, 30, 60000, 50, 25), vid(cid, 31, 900, 40, 26)]
+        uploads[cid] = vids
+    hits = [uploads["A"][6], uploads["B"][6]]
+    return {"queries": ["stub"], "days": 150, "hits": hits, "uploads": uploads,
+            "channels": {cid: {"title": f"Stub channel {cid}", "subscribers": 50000, "uploads": f"UU{cid}"} for cid in ("A", "B")}}
 
 
 def image_card(scene: str, out_png: Path, label: str = "") -> None:

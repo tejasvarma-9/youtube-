@@ -387,5 +387,86 @@ class CrewHardRules(unittest.TestCase):
         self.assertNotRegex(code, r"(?i)youtube\.upload|videos\(\)\.insert|vidiq_")
 
 
+class TrendsTests(unittest.TestCase):
+    """The trends agent on made-up YouTube data, in a copy of the repo so applying a proposal never edits real prompts."""
+
+    def setUp(self):
+        import tempfile
+        self.tmp = Path(tempfile.mkdtemp())
+        shutil.copytree(config.ROOT / "prompts", self.tmp / "prompts")
+        shutil.copy2(config.ROOT / "voice.md", self.tmp / "voice.md")
+        (self.tmp / "out").mkdir()
+        self.patches = [mock.patch.object(config, "ROOT", self.tmp), mock.patch.object(config, "OUT", self.tmp / "out"),
+                        mock.patch.object(config, "PROMPTS", self.tmp / "prompts")]
+        for p in self.patches:
+            p.start()
+
+    def tearDown(self):
+        for p in self.patches:
+            p.stop()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_each_video_is_measured_against_its_own_channel(self):
+        from pipeline import stubs, trends
+        g = trends.measure(stubs.youtube_data())
+        self.assertEqual({o["id"] for o in g["videos"]["outliers"]}, {"Av10", "Bv10"})
+        self.assertEqual(g["videos"]["outliers"][0]["ratio"], 7.5)
+        self.assertIn("Av11", {f["id"] for f in g["videos"]["flops"]})
+        self.assertEqual({o["id"] for o in g["shorts"]["outliers"]}, {"Av30", "Bv30"})
+
+    def test_report_proposals_and_apply(self):
+        from pipeline import trends
+        self.assertEqual(cli.main(["--stub", "trends"]), 0)
+        r = trends.latest(stub=True)
+        self.assertEqual(len(r["proposals"]), 1)
+        self.assertTrue(any("not a file proposals may edit" in d for d in r["dropped"]))
+        self.assertIn("Stub note", trends.writer_notes(stub=True))
+        md = next((self.tmp / "out" / "_crew" / "stub").glob("trends_*.md")).read_text()
+        self.assertIn("Proposed changes (you decide)", md)
+        before = (self.tmp / "prompts" / "shorts.md").read_text()
+        self.assertEqual(before, (config.ROOT / "prompts" / "shorts.md").read_text())  # the report alone changed nothing
+        self.assertEqual(cli.main(["--stub", "trends", "--apply", "1"]), 0)
+        after = (self.tmp / "prompts" / "shorts.md").read_text()
+        self.assertIn("3 to 6 search phrases people really type.", after)
+        kept = replaced_dir(self.tmp / "out" / "_crew" / "stub") / "prompts" / "shorts.md"
+        self.assertEqual(kept.read_text(), before)
+        self.assertEqual(trends.latest(stub=True)["applied"], [1])
+        # Applying it again finds nothing to replace and changes nothing.
+        self.assertEqual(cli.main(["--stub", "trends", "--apply", "1"]), 1)
+        self.assertEqual((self.tmp / "prompts" / "shorts.md").read_text(), after)
+        self.assertEqual(cli.main(["--stub", "trends", "--apply", "5"]), 1)
+
+    def test_old_notes_are_not_used(self):
+        from pipeline import trends
+        self.assertEqual(cli.main(["--stub", "trends"]), 0)
+        p = self.tmp / "out" / "_crew" / "stub" / "trends_latest.json"
+        r = json.loads(p.read_text())
+        r["timestamp"] = "2026-01-01T00:00:00Z"
+        p.write_text(json.dumps(r))
+        self.assertIn("too old", trends.writer_notes(stub=True))
+
+    def test_proposals_must_match_the_file_and_say_how_we_stay_distinct(self):
+        from pipeline import trends
+        ok = {"file": "prompts/shorts.md", "before": "- tags: 3 to 6 search phrases.", "after": "x", "keeps_us_distinct": "y"}
+        good, dropped = trends.check_proposals([ok, {**ok, "before": "not in the file"}, {**ok, "keeps_us_distinct": ""},
+                                                {**ok, "template_risk": "copies Channel X's thumbnail"}])
+        self.assertEqual(len(good), 1)
+        self.assertEqual(len(dropped), 3)
+
+    def test_api_errors_never_show_the_key(self):
+        from pipeline import trends
+        res = mock.Mock(status_code=403, text="API key SECRET123: YouTube Data API v3 has not been used in project 1")
+        with mock.patch.object(trends.requests, "get", return_value=res):
+            with self.assertRaises(StageError) as e:
+                trends.YouTube("SECRET123").get("search", q="x")
+        self.assertNotIn("SECRET123", str(e.exception))
+        self.assertIn("YouTube Data API v3", str(e.exception))
+
+    def test_every_trends_placeholder_is_filled(self):
+        for name, code in (("metadata.md", "s7_metadata.py"), ("shorts.md", "s11_shorts.py"), ("topic_scout.md", "crew.py")):
+            self.assertIn("{{TRENDS}}", (config.PROMPTS / name).read_text())
+            self.assertIn("TRENDS=trends.writer_notes(", (Path(__file__).parent.parent / "pipeline" / code).read_text())
+
+
 if __name__ == "__main__":
     unittest.main()

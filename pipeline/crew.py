@@ -41,7 +41,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from . import (align, config, llm, s1_script, s2_factcheck, s3_voiceover, s4_shots, s5_images, s6_assemble, s7_metadata,
-               s8_thumbnail, s9_review, s10_qc, s11_shorts)
+               s8_thumbnail, s9_review, s10_qc, s11_shorts, trends)
 from .common import StageError, Video, extract_json, fill, fmt_ts, log, prompt, retire, slugify, word_count
 
 AGENTS = ["topic_scout", "script_factcheck", "voice_captions", "images", "packaging", "shorts", "overseer"]
@@ -285,7 +285,8 @@ def scout(a) -> tuple[Report, list[dict]]:
     rep = Report("topic_scout", "")
     taken, made = _taken()
     text = fill(prompt("topic_scout.md"), DATE=datetime.now().strftime("%d %B %Y"), COUNT=str(SCOUT_MAX),
-                EXISTING="\n".join(made) or "(none yet)", RECENT="\n".join(_recent_proposals()) or "(none)")
+                EXISTING="\n".join(made) or "(none yet)", RECENT="\n".join(_recent_proposals()) or "(none)",
+                TRENDS=trends.writer_notes(a.stub))
     extra, topics, problems = "", [], []
     for attempt in (1, 2):
         answer = llm.ask(text + extra, "topic_scout", web=True, stub=a.stub)
