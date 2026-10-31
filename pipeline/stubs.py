@@ -129,6 +129,10 @@ def llm_answer(kind: str, ctx: dict) -> str:
                            "keeps_us_distinct": "stub", "template_risk": ""},
                           {"title": "Not allowed", "file": "pipeline/cli.py", "before": "x", "after": "y", "why": "stub",
                            "evidence": [], "keeps_us_distinct": "stub", "template_risk": ""}]}) + "\n===END==="
+    if kind == "autopilot_scene":
+        return "Exactly three stick figures stand in a short line, fully inside the frame, one of them red. Wide empty space around them."
+    if kind == "autopilot_source":
+        return ctx.get("line", "")
     if kind in ("crew_images",):
         return "===JSON===\n" + json.dumps({"images": []}) + "\n===END==="
     if kind == "crew_short_qc":

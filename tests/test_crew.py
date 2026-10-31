@@ -636,3 +636,179 @@ class TrendsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AutopilotTests(unittest.TestCase):
+    """The autopilot: safe fixes only, a spending limit, never approve; and the local Start server."""
+
+    slug = "zz-test-autopilot"
+
+    def setUp(self):
+        self.d = config.OUT / self.slug
+        shutil.rmtree(self.d, ignore_errors=True)
+        (self.d / "images").mkdir(parents=True)
+        (self.d / "agents").mkdir()
+        (self.d / "brief.json").write_text(json.dumps({"topic": "Test topic", "words": 1800}))
+        style = "\n\nStyle: simple 2D hand-drawn. No text of any kind."
+        shots = [{"id": k, "text": f"Narration {k}.", "scene": f"Scene {k}. (Redraw note: old problem. Avoid it.)",
+                  "prompt": f"Scene {k}.{style}", "start": 0, "end": 1, "sentences": [k]} for k in range(1, 4)]
+        (self.d / "shots.json").write_text(json.dumps({"shots": shots}))
+        for k in range(1, 4):
+            (self.d / "images" / f"shot_{k:03d}.png").write_bytes(b"png")
+        self.v = Video(self.slug)
+
+    def tearDown(self):
+        shutil.rmtree(self.d, ignore_errors=True)
+
+    def _state(self):
+        from pipeline import autopilot
+        return autopilot.State(self.v, 2.0, 4)
+
+    def _images_failed(self, ids=(2,)):
+        rep = crew.Report("images", self.slug)
+        rep.fail("These pictures still have serious problems")
+        rep.details["findings"] = {str(i): {"severity": "high", "problem": "the queue is cut off"} for i in ids}
+        rep.write(self.v)
+        (self.d / "agents" / "status.json").write_text(json.dumps({"agents": {"images": {"state": "stopped"}}}))
+
+    def test_bad_picture_gets_a_new_scene_and_is_set_aside_not_deleted(self):
+        from pipeline import autopilot
+        self._images_failed()
+        st = self._state()
+        done, first, replan = autopilot.plan(self.v, None, st, True)
+        self.assertEqual(first, "images")
+        self.assertEqual(len(done), 1)
+        shots = json.loads((self.d / "shots.json").read_text())["shots"]
+        s2 = next(s for s in shots if s["id"] == 2)
+        self.assertNotIn("Redraw note", s2["scene"])
+        self.assertTrue(s2["prompt"].startswith(s2["scene"]) and "Style:" in s2["prompt"])
+        self.assertFalse((self.d / "images" / "shot_002.png").exists())
+        self.assertTrue((replaced_dir(self.d) / "images" / "shot_002.png").exists())
+        self.assertTrue((replaced_dir(self.d) / "shots.json").exists())
+        self.assertTrue((self.d / "images" / "shot_001.png").exists())
+
+    def test_a_picture_is_rewritten_at_most_twice(self):
+        from pipeline import autopilot
+        self._images_failed()
+        st = self._state()
+        for _ in range(2):
+            self.assertTrue(autopilot.plan(self.v, None, st, True)[0])
+        done, first, _ = autopilot.plan(self.v, None, st, True)
+        self.assertEqual((done, first), ([], None))
+
+    def test_an_old_report_does_not_trigger_a_fix(self):
+        from pipeline import autopilot
+        self._images_failed()
+        (self.d / "agents" / "status.json").write_text(json.dumps({"agents": {"images": {"state": "skipped"}}}))
+        self.assertEqual(autopilot.plan(self.v, None, self._state(), True)[0], [])
+
+    def test_pipeline_note_is_cut_from_sources_but_ids_and_urls_stay(self):
+        from pipeline import autopilot
+        (self.d / "sources.txt").write_text("S1 | Example Publisher, Real Title | https://example.com/a\n"
+                                            "S2 | Other Publisher, Other Title | https://example.com/b | the fact-checker should confirm this\n")
+        changed, stuck = autopilot.strip_source_notes(self.v, True)
+        self.assertEqual((changed, stuck), (["S2"], []))
+        text = (self.d / "sources.txt").read_text()
+        self.assertIn("S2 | Other Publisher, Other Title | https://example.com/b\n", text)
+        self.assertNotIn("fact-checker", text)
+        self.assertTrue((replaced_dir(self.d) / "sources.txt").exists())
+
+    def test_a_note_it_cannot_cut_safely_is_left_for_you(self):
+        from pipeline import autopilot
+        line = "S2 | Publisher, Title (fact-checker should confirm) | https://example.com/b"
+        (self.d / "sources.txt").write_text(line + "\n")
+        changed, stuck = autopilot.strip_source_notes(self.v, True)  # stub Claude hands the line back unchanged
+        self.assertEqual(changed, [])
+        self.assertEqual(len(stuck), 1)
+        self.assertEqual((self.d / "sources.txt").read_text().strip(), line)
+
+    def test_it_stops_before_a_run_that_would_pass_the_spending_limit(self):
+        from pipeline import autopilot
+        a = argparse.Namespace(topic=None, slug=self.slug, stub=False, cap=0.5, max_cycles=4)
+        with mock.patch.object(crew, "start", return_value=self.v), \
+             mock.patch.object(crew, "estimate", return_value=[("pictures", 1.0, 0.0)]), \
+             mock.patch.object(crew, "cmd_crew") as ran:
+            st = autopilot.run(a)
+        self.assertEqual(st.status, "cap")
+        ran.assert_not_called()
+
+    def test_all_go_stops_as_ready_and_never_approves(self):
+        from pipeline import autopilot, s9_review
+        verdict = {"full_video": {"verdict": "GO", "reasons": [], "fixes": []},
+                   "shorts": [{"short": 1, "verdict": "GO", "reasons": [], "fixes": []}]}
+        a = argparse.Namespace(topic=None, slug=self.slug, stub=True, cap=2.0, max_cycles=4)
+        with mock.patch.object(crew, "start", return_value=self.v), mock.patch.object(crew, "cmd_crew") as ran, \
+             mock.patch.object(s9_review, "approve") as approve:
+            (self.d / "agents" / "VERDICT.json").write_text(json.dumps(verdict))
+            st = autopilot.run(a)
+        self.assertEqual(st.status, "ready")
+        ran.assert_called_once()
+        approve.assert_not_called()
+        self.assertIn("Autopilot", (self.d / "agents" / "AUTOPILOT.md").read_text())
+
+    def test_stub_run_ends_needs_you_without_looping(self):
+        from pipeline import autopilot
+        a = argparse.Namespace(topic="Autopilot stub topic", slug="zz-test-autopilot-stub", stub=True, cap=2.0, max_cycles=4,
+                               count=3)
+        d = config.OUT / "zz-test-autopilot-stub"
+        shutil.rmtree(d, ignore_errors=True)
+        try:
+            with mock.patch("sys.stdin.isatty", return_value=False):
+                st = autopilot.run(a)
+            self.assertEqual(st.status, "needs_you")  # a stub video is always NO-GO, and nothing safe applies
+            self.assertEqual(st.cycle, 1)
+            self.assertTrue(st.needs_you)
+            self.assertEqual(json.loads((d / "agents" / "autopilot.json").read_text())["status"], "needs_you")
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+
+    def test_local_server_needs_the_token_and_the_right_host(self):
+        import http.client
+        import threading
+        from http.server import ThreadingHTTPServer
+        from pipeline import dashboard, serve
+        box = [0]
+        server = ThreadingHTTPServer(("127.0.0.1", 0), serve.make_handler("tok123", box))
+        box[0] = server.server_address[1]
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        host = f"127.0.0.1:{box[0]}"
+
+        def call(method, path, body=None, headers=None):
+            c = http.client.HTTPConnection("127.0.0.1", box[0])
+            c.request(method, path, body=json.dumps(body) if body is not None else None, headers=headers or {})
+            r = c.getresponse()
+            return r.status, r.read().decode()
+        try:
+            code, page = call("GET", "/")
+            self.assertEqual(code, 200)
+            self.assertIn("Start a video", page)
+            self.assertIn("tok123", page)
+            self.assertEqual(call("POST", "/start", {"topic": "x"})[0], 403)                      # no token
+            self.assertEqual(call("POST", "/start", {"topic": "x"}, {"X-Token": "wrong"})[0], 403)
+            self.assertEqual(call("POST", "/start", {"topic": "x"}, {"X-Token": "tok123", "Host": "evil.example"})[0], 403)
+            self.assertEqual(call("POST", "/start", {"slug": "no-such-video"}, {"X-Token": "tok123"})[0], 400)
+            with mock.patch.object(dashboard, "autopilot_running", return_value=True):
+                self.assertEqual(call("POST", "/start", {"topic": "x"}, {"X-Token": "tok123"})[0], 409)
+            with mock.patch.object(dashboard, "autopilot_running", return_value=False), \
+                 mock.patch("pipeline.serve.subprocess.Popen") as popen:
+                code, _ = call("POST", "/start", {"topic": "--yes; rm -rf /"}, {"X-Token": "tok123"})
+            self.assertEqual(code, 200)
+            argv = popen.call_args[0][0]
+            self.assertIn("--topic=--yes; rm -rf /", argv)       # one argument, never a flag, never a shell
+            self.assertNotIn("approve", " ".join(argv))
+        finally:
+            server.shutdown()
+
+    def test_dashboard_shows_the_autopilot_and_stays_live_while_it_runs(self):
+        from pipeline import dashboard
+        ap = {"slug": self.slug, "status": "needs_you", "pid": 1, "cycle": 2, "max_cycles": 4, "spent": 0.4, "cap": 2.0,
+              "updated": "2026-10-31T00:00:00Z", "actions": [{"cycle": 1, "text": "wrote a new scene for shot 2"}],
+              "needs_you": ["Full video: fix the claim"], "summary": "Stopped: needs you."}
+        (self.d / "agents" / "autopilot.json").write_text(json.dumps(ap))
+        page = dashboard.render(dashboard.collect(), token="t")
+        for needle in ("Needs you", "wrote a new scene for shot 2", "Run it again", "$0.40 of $2.00"):
+            self.assertIn(needle, page)
+        self.assertNotIn("Run it again", dashboard.render(dashboard.collect()))   # a plain file has no Start button
+        ap.update(status="running", pid=__import__("os").getpid())
+        (self.d / "agents" / "autopilot.json").write_text(json.dumps(ap))
+        self.assertIn("data-live='1'", dashboard.render(dashboard.collect()))

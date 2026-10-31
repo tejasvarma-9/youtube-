@@ -169,10 +169,18 @@ def _video(d: Path) -> dict:
             break
         except (OSError, ValueError):
             continue
-    updated = max([_ts(st.get("updated"))] + [_ts(r.get("timestamp")) for r in reports.values()]
+    ap = None
+    try:
+        ap = json.loads((agents_dir / "autopilot.json").read_text()) if (agents_dir / "autopilot.json").exists() else None
+    except ValueError:
+        ap = None
+    if ap and ap.get("status") == "running" and not _alive(ap.get("pid")):
+        ap["status"] = "error"
+        ap["summary"] = "The autopilot stopped without finishing (the window was closed or the Mac went to sleep)."
+    updated = max([_ts(st.get("updated")), _ts((ap or {}).get("updated"))] + [_ts(r.get("timestamp")) for r in reports.values()]
                   + [_ts((verdict or {}).get("timestamp"))])
     return {"slug": d.name, "title": title, "reports": reports, "status": st, "verdict": verdict, "log": log,
-            "updated": updated}
+            "updated": updated, "autopilot": ap}
 
 
 def collect() -> list[dict]:
@@ -327,7 +335,27 @@ def _totals(vid: dict) -> str:
     return " · ".join(parts)
 
 
-def _video_panel(vid: dict) -> str:
+AP_LABEL = {"running": "Autopilot is working", "ready": "Ready for your review", "needs_you": "Needs you",
+            "cap": "Stopped at the spending limit", "max_cycles": "Stopped after the last cycle", "error": "Stopped by an error"}
+
+
+def _autopilot(vid: dict, token: str | None) -> str:
+    ap = vid.get("autopilot")
+    if not ap:
+        return ""
+    cls = {"running": "running", "ready": "go"}.get(ap["status"], "nogo" if ap["status"] in ("error",) else "warnb")
+    acts = "".join(f"<li><span class='c'>cycle {a['cycle']}</span> {E(a['text'])}</li>" for a in ap.get("actions", []))
+    needs = "".join(f"<li>{E(x)}</li>" for x in ap.get("needs_you", []))
+    again = (f"<button class='go-btn' data-slug='{E(vid['slug'])}'>Run it again</button>"
+             if token and ap["status"] not in ("running", "ready") else "")
+    prog = f"cycle {ap.get('cycle', 0)} of {ap.get('max_cycles', 0)} · ${ap.get('spent', 0):.2f} of ${ap.get('cap', 0):.2f}"
+    return (f"<section class='ap {cls}'><div class='aph'><b>{E(AP_LABEL.get(ap['status'], ap['status']))}</b><span>{E(prog)}</span>{again}</div>"
+            f"{'<p>' + E(ap['summary']) + '</p>' if ap.get('summary') else ''}"
+            f"{'<h4>Needs you</h4><ul>' + needs + '</ul>' if needs else ''}"
+            f"{'<h4>Fixed by itself</h4><ul>' + acts + '</ul>' if acts else ''}</section>")
+
+
+def _video_panel(vid: dict, token: str | None = None) -> str:
     st = vid["status"]
     states = [_state(n, vid) for n, _, _ in AGENTS]
     done = sum(s in ("passed", "skipped") for s in states)
@@ -346,7 +374,7 @@ def _video_panel(vid: dict) -> str:
     log = (f"<pre>{E(vid['log'])}</pre>" if vid["log"] else "<p class='quiet'>Nothing logged yet.</p>")
     return (f"<article id='v-{E(vid['slug'])}' class='video' data-open='{first_open}'>"
             f"<header class='vhead'><div class='status'>{head}<span class='tot'>{E(_totals(vid))}</span></div>"
-            f"<h1>{E(vid['title'])}</h1><p class='path'>out/{E(vid['slug'])}</p></header>"
+            f"<h1>{E(vid['title'])}</h1><p class='path'>out/{E(vid['slug'])}</p></header>{_autopilot(vid, token)}"
             f"<div class='rail' style='--p:{pct}'><div class='track'><div class='fill'></div></div>{stations}</div>"
             f"<div class='stage'>{details}</div>{_verdict(vid)}"
             f"<aside class='drawer'><button class='dtog' aria-expanded='false'>Live log</button><div class='dbody'>{log}</div></aside></article>")
@@ -419,6 +447,15 @@ table.mini th,table.mini td{border-top:1px solid var(--line);padding:9px 6px;ver
 .rail{grid-template-columns:1fr;margin:24px 0 8px}.track{left:23px;right:auto;top:24px;bottom:24px;width:4px;height:auto}.fill{width:100%;height:calc(var(--p)*1%)}
 .st{flex-direction:row;text-align:left;gap:14px;padding:8px 0}.node{width:44px;height:44px;flex:none}.sts{margin-left:auto}.flag{left:34px;top:6px}
 .pick{max-width:none}.top{flex-wrap:wrap}}
+.launch{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:22px clamp(16px,3vw,32px);margin-bottom:28px}
+.launch h2{font:700 22px var(--serif);margin:0 0 12px}#go{display:flex;gap:10px;flex-wrap:wrap}
+#go input{flex:1;min-width:220px;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:inherit}
+#go button,.go-btn{padding:11px 22px;border-radius:12px;border:0;background:var(--money);color:#fff;font-weight:700;cursor:pointer}
+.go-btn{padding:6px 14px;margin-left:auto}
+.ap{margin:22px 0 0;border:1px solid var(--line);border-left:6px solid var(--idle);background:var(--panel);border-radius:14px;padding:16px 20px}
+.ap.running{border-left-color:var(--run)}.ap.go{border-left-color:var(--money)}.ap.nogo{border-left-color:var(--bad)}.ap.warnb{border-left-color:var(--warn)}
+.aph{display:flex;gap:14px;align-items:center;flex-wrap:wrap}.aph span{color:var(--muted);font-size:13px}.ap p{margin:8px 0 0;max-width:70ch}
+.ap h4{margin:12px 0 4px;font-size:13px;color:var(--muted)}.ap ul{margin:0;padding-left:20px;font-size:14px}.ap li{margin:4px 0;max-width:84ch}.ap .c{color:var(--muted);font-size:12px;margin-right:6px}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 """
 
@@ -449,17 +486,40 @@ if(document.body.dataset.live==='1'){setTimeout(()=>{save('y',window.scrollY);lo
 """
 
 
-def render(vids: list[dict]) -> str:
-    live = any(v["status"].get("running") for v in vids)
+def autopilot_running() -> bool:
+    return any((v.get("autopilot") or {}).get("status") == "running" for v in collect())
+
+
+LAUNCH = """<section class='launch'><h2>Start a video</h2>
+<form id='go'><input name='topic' maxlength='200' placeholder='Topic, for example: How vending machines make money' aria-label='Topic'>
+<button type='submit'>Start</button></form>
+<p class='quiet'>Leave the topic empty and the topic scout picks one. The autopilot builds it, fixes what is safe to fix, and stops
+when it is ready for your review or needs you. It never approves, uploads or posts.</p><p id='msg' class='quiet' role='status'></p></section>"""
+
+LAUNCH_JS = """
+const TOKEN='TOKENVALUE';
+async function start(body){const m=document.getElementById('msg');m.textContent='Starting...';
+try{const r=await fetch('/start',{method:'POST',headers:{'Content-Type':'application/json','X-Token':TOKEN},body:JSON.stringify(body)});
+const j=await r.json();if(!r.ok){m.textContent=j.error||'Could not start.';return;}m.textContent='Started. This page updates by itself.';
+setTimeout(()=>{location.hash=j.slug?'#'+j.slug:'';location.reload();},2500);}catch(e){m.textContent='Could not reach the dashboard server. Is Start Crew still open?';}}
+document.getElementById('go')?.addEventListener('submit',e=>{e.preventDefault();start({topic:e.target.topic.value.trim()});});
+document.addEventListener('click',e=>{const b=e.target.closest('.go-btn');if(b)start({slug:b.dataset.slug});});
+"""
+
+
+def render(vids: list[dict], token: str | None = None) -> str:
+    live = any(v["status"].get("running") or (v.get("autopilot") or {}).get("status") == "running" for v in vids)
     nav = "".join(f"<a href='#{E(v['slug'])}' data-slug='{E(v['slug'])}'>{E(v['title'])}</a>" for v in vids)
-    panels = "".join(_video_panel(v) for v in vids) or \
-        "<p class='quiet'>No crew runs yet. Start one with <code>python -m pipeline crew</code>.</p>"
+    panels = "".join(_video_panel(v, token) for v in vids) or \
+        ("<p class='quiet'>No videos yet. Type a topic above and press Start.</p>" if token else
+         "<p class='quiet'>No videos yet. Double-click <code>Start Crew.command</code> to get a Start button.</p>")
     status = ("<span class='live'>Live</span>" if live else
               f"<span class='idle'>Updated {datetime.now().strftime('%d %b %H:%M')}</span>")
     return ("<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
             f"<title>Crew dashboard</title><style>{CSS}</style></head><body data-live='{1 if live else 0}'>"
             f"<div class='top'><div class='brand'>Who Pays <span>Who</span></div>{status}<nav class='pick'>{nav}</nav></div>"
-            f"<main>{panels}</main><script>{JS.replace('REFRESH', str(REFRESH_S * 1000))}</script></body></html>")
+            f"<main>{LAUNCH if token else ''}{panels}</main><script>{JS.replace('REFRESH', str(REFRESH_S * 1000))}</script>"
+            f"{'<script>' + LAUNCH_JS.replace('TOKENVALUE', E(token)) + '</script>' if token else ''}</body></html>")
 
 
 def build(throttle: bool = False) -> Path | None:

@@ -8,7 +8,7 @@ import re
 import shutil
 import sys
 
-from . import (align, config, crew, s1_script, s2_factcheck, s3_voiceover, s4_shots, s5_images, s6_assemble, s7_metadata, s11_shorts,
+from . import (align, autopilot, config, crew, s1_script, s2_factcheck, s3_voiceover, s4_shots, s5_images, s6_assemble, s7_metadata, s11_shorts,
                s8_thumbnail, s9_review, s10_qc)
 from .common import StageError, Video, log, slugify
 
@@ -260,6 +260,19 @@ def main(argv=None) -> int:
     tr.add_argument("--login", action="store_true", help="sign in to Google again (read-only YouTube access), then stop")
     tr.add_argument("--queries", help="comma-separated YouTube searches to use instead of the defaults")
     tr.add_argument("--days", type=int, default=150, help="only videos published in the last this many days")
+    au = sub.add_parser("autopilot", help="run the crew, fix what is safe to fix, run it again; stops at GO or when it needs you")
+    au.add_argument("--topic", help="the topic (empty: the topic scout picks the first one)")
+    au.add_argument("--slug", help="continue this video")
+    au.add_argument("--angle")
+    au.add_argument("--character")
+    au.add_argument("--notes")
+    au.add_argument("--words", type=int, default=config.TARGET_WORDS)
+    au.add_argument("--count", type=int, default=config.SHORTS_COUNT, help="how many Shorts, 2 to 4")
+    au.add_argument("--cap", type=float, default=autopilot.CAP_USD, help="stop when this run has spent this many dollars")
+    au.add_argument("--max-cycles", type=int, default=autopilot.MAX_CYCLES)
+    sv = sub.add_parser("serve", help="the dashboard with a Start button (this Mac only); what Start Crew.command opens")
+    sv.add_argument("--port", type=int)
+    sv.add_argument("--no-open", action="store_true")
     db = sub.add_parser("dashboard", help="open the crew dashboard: which agent is doing what, live")
     db.add_argument("--no-open", action="store_true", help="only rebuild the page")
     sub.add_parser("status", help="list videos and which stages are done")
@@ -318,6 +331,11 @@ def main(argv=None) -> int:
                 trends.apply(a.apply, stub=a.stub)
             else:
                 trends.run(stub=a.stub, queries=[q.strip() for q in a.queries.split(",")] if a.queries else None, days=a.days)
+        elif a.cmd == "autopilot":
+            autopilot.run(a)
+        elif a.cmd == "serve":
+            from . import serve
+            serve.run(a)
         elif a.cmd == "dashboard":
             from . import dashboard
             p = dashboard.build() if a.no_open else dashboard.open_page()

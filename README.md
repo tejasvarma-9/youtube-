@@ -409,3 +409,18 @@ python -m unittest discover tests
 ## Credits
 
 The title, thumbnail-text and chapter checks follow the approach of [youtube-agent-skill](https://github.com/Jakeschincariol/youtube-agent-skill) by Jake Schincariol (MIT). No code was copied from it, so its license does not apply here. Its `/yt-*` skills can still be installed on the Mac separately, for research and post-publish analysis.
+
+
+## Autopilot: no commands
+
+Double-click **Start Crew.command** in this folder. It opens the dashboard with a **Start** box in your browser. Type a topic (or leave it empty and the topic scout picks one) and press Start. That is the only thing you do.
+
+The autopilot (`python -m pipeline autopilot`, which Start runs for you) runs the crew, reads the verdict and every agent's report, fixes what is safe to fix, and runs again from the first agent the fix touches. It stops when:
+
+- everything is GO: the dashboard says "Ready for your review". You watch the video and run `approve` yourself;
+- what is left needs a decision from you: the dashboard lists it in plain words, and "Run it again" restarts after you have fixed it;
+- it has spent the limit ($2.00 per video, `--cap`) or used its 4 cycles (`--max-cycles`).
+
+What it may change by itself: a picture the checker rejected twice (Claude writes a new scene, at most 2 times per picture, old picture moved to `_replaced_<date>/`), a note to the pipeline that landed in `sources.txt` (the id, publisher, title and URL are kept exactly), and a Short that was rejected (chosen again, then from scratch). It never edits a fact, a number, a claim, a source or the script. It never runs `approve`, never uploads, never posts.
+
+The Start button works through a small server that only answers on this Mac (127.0.0.1) and needs a one-time token from the page it served. Leave the Start Crew window open while you use the page; a run keeps going if you close it, but the page cannot show it. Notes are in `out/<slug>/agents/AUTOPILOT.md`.
