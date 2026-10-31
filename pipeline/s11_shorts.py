@@ -35,8 +35,14 @@ from .common import (StageError, Video, extract_json, fill, fmt_ts, log, media_d
 from .lint import _numbers
 from .s6_assemble import MOTIONS, find_ffmpeg
 
-CLIP_VERSION = "short3"   # bump when the picture layout changes, so cached clips are rebuilt
+CLIP_VERSION = "short4"   # bump when the picture layout changes, so cached clips are rebuilt
 PLAN_VERSION = 2          # plans from an older version (no hook_text, no review) are chosen again
+# Shorts only breathe: a small centred push-in or pull-out. The full video's pans and 10% zoom cut figures drawn near
+# an edge, and a Short shows the whole 16:9 picture across a narrow frame, so nothing may be cropped here.
+SHORT_MOTIONS = [
+    lambda t: (1 + 0.04 * t, 0.5, 0.5),
+    lambda t: (1.04 - 0.04 * t, 0.5, 0.5),
+]
 HEAD_PAD_S = 0.10         # a little room before the first word of a sentence
 TAIL_PAD_S = 0.35         # and after the last
 GAP_S = 0.12              # silence between kept sentences
@@ -445,7 +451,7 @@ def build_clip(img, out, frames: int, motion: int, hook: str = "") -> None:
     sw, sh_ = src.size
     fh = round(sh_ * W / sw)
     bg = _backdrop(src, hook)
-    move = MOTIONS[motion % len(MOTIONS)]
+    move = SHORT_MOTIONS[motion % len(SHORT_MOTIONS)]
     cmd = [find_ffmpeg()[0], "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}",
            "-r", str(FPS), "-i", "-", "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", str(out)]
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)

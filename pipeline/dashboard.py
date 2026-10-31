@@ -25,6 +25,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import config
+from .common import Video
 
 AGENTS = [
     ("topic_scout", "Topic scout", "Finds 3 to 5 topics with demand and 3+ primary sources each; you pick one."),
@@ -360,6 +361,23 @@ def _autopilot(vid: dict, token: str | None) -> str:
             f"{'<h4>Fixed by itself</h4><ul>' + acts + '</ul>' if acts else ''}</section>")
 
 
+def _edits(vid: dict, token: str | None) -> str:
+    """The overseer's exact script edits, shown as before and after, each with an Apply button on the Start server."""
+    from . import autopilot
+    try:
+        fixes = autopilot.pending_line_fixes(Video(vid["slug"]))
+    except Exception:
+        fixes = []
+    if not fixes:
+        return ""
+    rows = "".join(
+        f"<div class='edit'><p class='why'>{E(f.get('why', ''))}</p><p class='old'>{E(f['find'])}</p><p class='new'>{E(f['replace'])}</p>"
+        + (f"<button class='ap-btn' data-slug='{E(vid['slug'])}' data-i='{i}'>Apply this edit and continue</button>" if token else
+           "<p class='quiet'>Open the dashboard with Start Crew.command to apply it with one click.</p>") + "</div>"
+        for i, f in enumerate(fixes))
+    return f"<section class='ap warnb'><div class='aph'><b>Edits to the script, your call</b><span>exact words, before and after</span></div>{rows}</section>"
+
+
 def _video_panel(vid: dict, token: str | None = None) -> str:
     st = vid["status"]
     states = [_state(n, vid) for n, _, _ in AGENTS]
@@ -379,7 +397,7 @@ def _video_panel(vid: dict, token: str | None = None) -> str:
     log = (f"<pre>{E(vid['log'])}</pre>" if vid["log"] else "<p class='quiet'>Nothing logged yet.</p>")
     return (f"<article id='v-{E(vid['slug'])}' class='video' data-open='{first_open}'>"
             f"<header class='vhead'><div class='status'>{head}<span class='tot'>{E(_totals(vid))}</span></div>"
-            f"<h1>{E(vid['title'])}</h1><p class='path'>out/{E(vid['slug'])}</p></header>{_autopilot(vid, token)}"
+            f"<h1>{E(vid['title'])}</h1><p class='path'>out/{E(vid['slug'])}</p></header>{_autopilot(vid, token)}{_edits(vid, token)}"
             f"<div class='rail' style='--p:{pct}'><div class='track'><div class='fill'></div></div>{stations}</div>"
             f"<div class='stage'>{details}</div>{_verdict(vid)}"
             f"<aside class='drawer'><button class='dtog' aria-expanded='false'>Live log</button><div class='dbody'>{log}</div></aside></article>")
@@ -456,7 +474,9 @@ table.mini th,table.mini td{border-top:1px solid var(--line);padding:9px 6px;ver
 .launch h2{font:700 22px var(--serif);margin:0 0 12px}#go{display:flex;gap:10px;flex-wrap:wrap}
 #go input{flex:1;min-width:220px;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:inherit}
 #go button,.go-btn{padding:11px 22px;border-radius:12px;border:0;background:var(--money);color:#fff;font-weight:700;cursor:pointer}
-.go-btn{padding:6px 14px;margin-left:auto}
+.go-btn{padding:6px 14px;margin-left:auto}.ap-btn{padding:8px 16px;border-radius:10px;border:0;background:var(--money);color:#fff;font-weight:700;cursor:pointer}
+.edit{margin-top:12px;border-top:1px dashed var(--line);padding-top:10px}.edit p{margin:6px 0;max-width:80ch}.edit .why{color:var(--muted);font-size:13px}
+.edit .old{background:var(--badbg);padding:8px 10px;border-radius:8px;text-decoration:line-through}.edit .new{background:var(--moneybg);padding:8px 10px;border-radius:8px}
 .ap{margin:22px 0 0;border:1px solid var(--line);border-left:6px solid var(--idle);background:var(--panel);border-radius:14px;padding:16px 20px}
 .ap.running{border-left-color:var(--run)}.ap.go{border-left-color:var(--money)}.ap.nogo{border-left-color:var(--bad)}.ap.warnb{border-left-color:var(--warn)}
 .aph{display:flex;gap:14px;align-items:center;flex-wrap:wrap}.aph span{color:var(--muted);font-size:13px}.ap p{margin:8px 0 0;max-width:70ch}
@@ -503,12 +523,14 @@ when it is ready for your review or needs you. It never approves, uploads or pos
 
 LAUNCH_JS = """
 const TOKEN='TOKENVALUE';
-async function start(body){const m=document.getElementById('msg');m.textContent='Starting...';
-try{const r=await fetch('/start',{method:'POST',headers:{'Content-Type':'application/json','X-Token':TOKEN},body:JSON.stringify(body)});
+function start(body){return post('/start',body);}
+async function post(path,body){const m=document.getElementById('msg')||{};m.textContent='Working...';
+try{const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json','X-Token':TOKEN},body:JSON.stringify(body)});
 const j=await r.json();if(!r.ok){m.textContent=j.error||'Could not start.';return;}m.textContent='Started. This page updates by itself.';
 setTimeout(()=>{location.hash=j.slug?'#'+j.slug:'';location.reload();},2500);}catch(e){m.textContent='Could not reach the dashboard server. Is Start Crew still open?';}}
 document.getElementById('go')?.addEventListener('submit',e=>{e.preventDefault();start({topic:e.target.topic.value.trim()});});
-document.addEventListener('click',e=>{const b=e.target.closest('.go-btn');if(b)start({slug:b.dataset.slug});});
+document.addEventListener('click',e=>{const b=e.target.closest('.go-btn');if(b)start({slug:b.dataset.slug});
+const a=e.target.closest('.ap-btn');if(a)post('/apply',{slug:a.dataset.slug,i:+a.dataset.i});});
 """
 
 

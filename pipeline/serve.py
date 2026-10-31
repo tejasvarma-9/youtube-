@@ -56,13 +56,15 @@ def make_handler(token: str, port_box: list):
         def do_POST(self):
             if not self._host_ok() or self.headers.get("X-Token") != token:
                 return self._json(403, {"error": "Not allowed."})
-            if self.path != "/start":
+            if self.path not in ("/start", "/apply"):
                 return self._json(404, {"error": "Not found."})
             try:
                 size = int(self.headers.get("Content-Length", "0"))
                 body = json.loads(self.rfile.read(min(size, 4096)) or b"{}")
             except ValueError:
                 return self._json(400, {"error": "Could not read the request."})
+            if self.path == "/apply":
+                return self._apply(body)
             topic = str(body.get("topic") or "").strip()[:200]
             slug = str(body.get("slug") or "").strip()
             if slug and not (re.fullmatch(r"[a-z0-9-]{1,80}", slug) and (config.OUT / slug / "brief.json").exists()):
@@ -79,6 +81,30 @@ def make_handler(token: str, port_box: list):
             out = open(logs / "autopilot.log", "a")
             subprocess.Popen(args, cwd=str(config.ROOT), stdout=out, stderr=subprocess.STDOUT, start_new_session=True)
             self._json(200, {"ok": True, "slug": slug or (re.sub(r"[^a-z0-9]+", "-", topic.lower()).strip("-")[:60].rstrip("-") if topic else "")})
+
+        def _apply(self, body: dict) -> None:
+            """Apply one of the overseer's script edits that the page showed, then carry on from the fact-check."""
+            from . import autopilot
+            from .common import StageError, Video
+            slug = str(body.get("slug") or "")
+            if not (re.fullmatch(r"[a-z0-9-]{1,80}", slug) and (config.OUT / slug / "brief.json").exists()):
+                return self._json(400, {"error": "There is no video with that name."})
+            try:
+                i = int(body.get("i"))
+                v = Video(slug)
+                fix = autopilot.pending_line_fixes(v)[i]
+                if dashboard.autopilot_running():
+                    return self._json(409, {"error": "The autopilot is already working on a video. Wait for it to stop."})
+                autopilot.apply_line_fix(v, fix["find"], fix["replace"])
+            except (ValueError, IndexError, TypeError):
+                return self._json(400, {"error": "That edit is no longer available."})
+            except StageError as e:
+                return self._json(400, {"error": str(e)})
+            logs = config.OUT / "_crew"
+            out = open(logs / "autopilot.log", "a")
+            subprocess.Popen([sys.executable, "-m", "pipeline", "autopilot", f"--slug={slug}", "--from-agent=script_factcheck"],
+                             cwd=str(config.ROOT), stdout=out, stderr=subprocess.STDOUT, start_new_session=True)
+            self._json(200, {"ok": True, "slug": slug})
 
     return Handler
 

@@ -1057,7 +1057,34 @@ def enforce(v: Video, data: dict, plan: dict, shorts_rep: dict, stub: bool) -> d
             _no_go(sv, "The full video is NO-GO, and a Short goes up only after the full video is public.")
         shorts.append({"short": n, "title": plan["shorts"][n - 1].get("title", ""), **sv})
     return {"slug": v.slug, "timestamp": _now(), "stub": stub, "full_video": full, "shorts": shorts,
-            "rechecked_claims": claims, "summary": str(data.get("summary", "")), "error": data.get("error", "")}
+            "rechecked_claims": claims, "summary": str(data.get("summary", "")), "error": data.get("error", ""),
+            "picture_fixes": _picture_fixes(v, data), "line_fixes": _line_fixes(v, data)}
+
+
+def _picture_fixes(v: Video, data: dict) -> list[dict]:
+    ids = {s["id"] for s in _read_json(v.dir / "shots.json", {"shots": []}).get("shots", [])}
+    out = []
+    for x in data.get("picture_fixes", []) or []:
+        try:
+            n = int(x.get("shot"))
+        except (TypeError, ValueError, AttributeError):
+            continue
+        if n in ids and str(x.get("problem", "")).strip() and all(o["shot"] != n for o in out):
+            out.append({"shot": n, "problem": str(x["problem"]).strip()[:400]})
+    return out
+
+
+def _line_fixes(v: Video, data: dict) -> list[dict]:
+    """Only exact, unambiguous edits to script.txt are kept; the page shows each one and Tejas clicks to apply it."""
+    script = _read(v.dir / "script.txt", 10 ** 6)
+    out = []
+    for x in data.get("line_fixes", []) or []:
+        if not isinstance(x, dict) or x.get("file") != "script.txt":
+            continue
+        find, new = str(x.get("find", "")).strip(), str(x.get("replace", "")).strip()
+        if find and new and find != new and len(find) <= 600 and len(new) <= 600 and script.count(find) == 1:
+            out.append({"file": "script.txt", "find": find, "replace": new, "why": str(x.get("why", ""))[:300]})
+    return out
 
 
 def write_verdict(v: Video, verdict: dict) -> None:

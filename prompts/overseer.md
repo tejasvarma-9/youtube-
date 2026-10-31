@@ -55,9 +55,14 @@ Use only these commands in your fixes (never invent one, never suggest approve o
 {{SHORTS}}
 </shorts>
 
+Two optional lists let the crew fix small things without Tejas typing anything. Use them only when they are exactly right:
+- picture_fixes: a picture whose scene contradicts its narration or looks wrong. {"shot": 19, "problem": "what is wrong, in plain words"}. Say what is wrong, not how to redraw it: a separate step writes the new scene.
+- line_fixes: a script line that overstates its source. {"file": "script.txt", "find": "the exact words now in the script, copied character for character, long enough to occur once", "replace": "the corrected words, no stronger than the source", "why": "one short sentence"}. Only script.txt. A replacement may weaken or correct a claim; it may never add a fact or a number the sources do not give. Tejas clicks to apply each one, so he sees it first.
+
 Output only this JSON between the marker lines:
 ===JSON===
 {"full_video": {"verdict": "GO", "reasons": [], "fixes": []},
+ "picture_fixes": [], "line_fixes": [],
  "shorts": [{"short": 1, "verdict": "GO", "reasons": [], "fixes": []}],
  "rechecked_claims": [{"claim": "the exact words", "source_url": "", "result": "CONFIRMED", "note": ""}],
  "summary": "two or three plain sentences for Tejas"}

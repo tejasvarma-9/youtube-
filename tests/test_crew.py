@@ -822,3 +822,118 @@ class ContinueButton(unittest.TestCase):
         self.assertEqual(dashboard._autopilot(vid, None), "")
         vid["status"] = {"running": True}
         self.assertEqual(dashboard._autopilot(vid, "tok"), "")
+
+
+class OverseerFixes(unittest.TestCase):
+    slug = "zz-test-overseer-fixes"
+
+    def setUp(self):
+        self.d = config.OUT / self.slug
+        shutil.rmtree(self.d, ignore_errors=True)
+        (self.d / "images").mkdir(parents=True)
+        (self.d / "agents").mkdir()
+        (self.d / "brief.json").write_text(json.dumps({"topic": "T"}))
+        (self.d / "script.txt").write_text("First line is fine. So who? Intuit answered that in its own earnings release. Last line.")
+        shots = [{"id": k, "text": f"N{k}.", "scene": f"Scene {k}.", "prompt": f"Scene {k}.\n\nStyle: flat.", "sentences": [k]}
+                 for k in (19, 47)]
+        (self.d / "shots.json").write_text(json.dumps({"shots": shots}))
+        for k in (19, 47):
+            (self.d / "images" / f"shot_{k:03d}.png").write_bytes(b"png")
+        self.v = Video(self.slug)
+
+    def tearDown(self):
+        shutil.rmtree(self.d, ignore_errors=True)
+
+    def test_only_exact_unambiguous_script_edits_are_kept(self):
+        data = {"line_fixes": [
+            {"file": "script.txt", "find": "Intuit answered that in its own earnings release.", "replace": "Intuit's release does not say who pays.", "why": "overstated"},
+            {"file": "script.txt", "find": "not in the script", "replace": "x"},
+            {"file": "script.txt", "find": "line", "replace": "LINE"},                      # occurs twice
+            {"file": "metadata.json", "find": "First", "replace": "x"},                      # only script.txt
+            {"file": "script.txt", "find": "Last line.", "replace": "Last line."}],         # no change
+            "picture_fixes": [{"shot": 19, "problem": "wrong plant"}, {"shot": 999, "problem": "no such shot"}, {"shot": 19, "problem": "dup"}]}
+        fixes = crew._line_fixes(self.v, data)
+        self.assertEqual(len(fixes), 1)
+        self.assertEqual(crew._picture_fixes(self.v, data), [{"shot": 19, "problem": "wrong plant"}])
+
+    def test_applying_an_edit_sets_the_old_script_aside(self):
+        from pipeline import autopilot
+        autopilot.apply_line_fix(self.v, "Intuit answered that in its own earnings release.", "Intuit's release does not say who pays.")
+        self.assertIn("does not say who pays", (self.d / "script.txt").read_text())
+        self.assertIn("answered that", (replaced_dir(self.d) / "script.txt").read_text())
+        with self.assertRaises(StageError):
+            autopilot.apply_line_fix(self.v, "Intuit answered that in its own earnings release.", "again")
+
+    def test_overseer_picture_fixes_become_new_scenes(self):
+        from pipeline import autopilot
+        (self.d / "agents" / "status.json").write_text(json.dumps({"agents": {}}))
+        st = autopilot.State(self.v, 2.0, 6)
+        verdict = {"picture_fixes": [{"shot": 19, "problem": "the small pot's plant should be taller"}]}
+        done, first, _ = autopilot.plan(self.v, verdict, st, True)
+        self.assertEqual(first, "images")
+        self.assertEqual(len(done), 1)
+        self.assertFalse((self.d / "images" / "shot_019.png").exists())
+        self.assertTrue((replaced_dir(self.d) / "images" / "shot_019.png").exists())
+        self.assertTrue((self.d / "images" / "shot_047.png").exists())
+
+    def test_what_is_left_is_listed_in_full_not_cut_off(self):
+        from pipeline import autopilot
+        long = "word " * 150
+        verdict = {"full_video": {"verdict": "NO-GO", "reasons": ["Reason one.", long.strip()], "fixes": ["Do this."]},
+                   "shorts": [{"short": 1, "verdict": "GO", "reasons": [], "fixes": []}]}
+        lines = autopilot.needs_from_verdict(self.v, verdict)
+        self.assertEqual(lines[0], "Full video: Reason one.")
+        self.assertEqual(lines[-1], "Full video, fix: Do this.")
+        self.assertEqual(len(lines), 3)
+
+    def test_the_page_shows_script_edits_with_an_apply_button_on_the_start_server_only(self):
+        from pipeline import dashboard
+        fix = {"file": "script.txt", "find": "Intuit answered that in its own earnings release.", "replace": "Intuit's release does not say who pays.", "why": "overstated"}
+        (self.d / "agents" / "VERDICT.json").write_text(json.dumps({"line_fixes": [fix]}))
+        vid = next(x for x in dashboard.collect() if x["slug"] == self.slug)
+        self.assertIn("Apply this edit and continue", dashboard._edits(vid, "tok"))
+        self.assertNotIn("Apply this edit", dashboard._edits(vid, None))
+        autopilot_mod = __import__("pipeline.autopilot", fromlist=["x"])
+        autopilot_mod.apply_line_fix(self.v, fix["find"], fix["replace"])
+        self.assertEqual(dashboard._edits(vid, "tok"), "")          # applied: no longer offered
+
+    def test_shorts_never_pan_or_zoom_past_a_few_percent(self):
+        for move in s11_shorts.SHORT_MOTIONS:
+            for t in (0, 0.25, 0.5, 1):
+                zoom, px, py = move(t)
+                self.assertLessEqual(zoom, 1.04 + 1e-9)
+                self.assertGreaterEqual(zoom, 1.0)
+                self.assertEqual((px, py), (0.5, 0.5))
+
+
+class ApplyEndpoint(OverseerFixes):
+    def test_apply_needs_the_token_and_runs_the_autopilot_from_the_fact_check(self):
+        import http.client
+        import threading
+        from http.server import ThreadingHTTPServer
+        from pipeline import dashboard, serve
+        fix = {"file": "script.txt", "find": "Intuit answered that in its own earnings release.", "replace": "Intuit's release does not say who pays.", "why": "x"}
+        (self.d / "agents" / "VERDICT.json").write_text(json.dumps({"line_fixes": [fix]}))
+        box = [0]
+        server = ThreadingHTTPServer(("127.0.0.1", 0), serve.make_handler("tok", box))
+        box[0] = server.server_address[1]
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+
+        def post(body, token="tok"):
+            c = http.client.HTTPConnection("127.0.0.1", box[0])
+            c.request("POST", "/apply", body=json.dumps(body), headers={"X-Token": token})
+            r = c.getresponse()
+            return r.status
+        try:
+            self.assertEqual(post({"slug": self.slug, "i": 0}, token="bad"), 403)
+            self.assertIn("answered that", (self.d / "script.txt").read_text())
+            with mock.patch.object(dashboard, "autopilot_running", return_value=False), \
+                 mock.patch("pipeline.serve.subprocess.Popen") as popen:
+                self.assertEqual(post({"slug": self.slug, "i": 0}), 200)
+                self.assertEqual(post({"slug": self.slug, "i": 0}), 400)      # already applied
+            self.assertIn("does not say who pays", (self.d / "script.txt").read_text())
+            argv = popen.call_args[0][0]
+            self.assertIn("--from-agent=script_factcheck", argv)
+            self.assertNotIn("approve", " ".join(argv))
+        finally:
+            server.shutdown()

@@ -269,6 +269,7 @@ def main(argv=None) -> int:
     au.add_argument("--words", type=int, default=config.TARGET_WORDS)
     au.add_argument("--count", type=int, default=config.SHORTS_COUNT, help="how many Shorts, 2 to 4")
     au.add_argument("--cap", type=float, default=autopilot.CAP_USD, help="stop when this run has spent this many dollars")
+    au.add_argument("--from-agent", choices=crew.AGENTS[1:], help="start by running this agent and every one after it again")
     au.add_argument("--max-cycles", type=int, default=autopilot.MAX_CYCLES)
     sv = sub.add_parser("serve", help="the dashboard with a Start button (this Mac only); what Start Crew.command opens")
     sv.add_argument("--port", type=int)

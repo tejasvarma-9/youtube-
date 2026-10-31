@@ -140,6 +140,7 @@ def llm_answer(kind: str, ctx: dict) -> str:
     if kind == "overseer":
         return "===JSON===\n" + json.dumps({
             "full_video": {"verdict": "GO", "reasons": ["stub run"], "fixes": []},
+            "picture_fixes": [], "line_fixes": [],
             "shorts": [{"short": n, "verdict": "GO", "reasons": ["stub run"], "fixes": []} for n in ctx.get("shorts", [])],
             "rechecked_claims": [], "summary": "Stub run: nothing was really checked."}) + "\n===END==="
     raise ValueError(f"no stub for {kind}")

@@ -36,7 +36,7 @@ from . import common, config, crew, dashboard, llm
 from .common import StageError, Video, fill, log, prompt, retire
 
 CAP_USD = 2.00
-MAX_CYCLES = 4
+MAX_CYCLES = 6
 MAX_SCENE_REWRITES = 2   # per picture
 MAX_SHORT_REPICKS = 2    # first: choose the rejected ones again; second: choose all of them from scratch
 SAFE_LIST = ("a picture the checker rejected (a new scene is written)", "a note to the pipeline in sources.txt (cut out)",
@@ -170,16 +170,40 @@ def all_go(verdict: dict | None) -> bool:
 
 
 def needs_from_verdict(v: Video, verdict: dict | None) -> list[str]:
+    """What is left, one plain line per reason and per fix (nothing cut off mid-sentence)."""
     if not verdict:
         return ["No verdict was written. Read out/%s/agents/run.log." % v.slug]
     out = []
-    f = verdict["full_video"]
-    if f["verdict"] != "GO":
-        out.append("Full video: " + " ".join(f.get("reasons", []))[:600] + (" Fix: " + " ".join(f["fixes"])[:600] if f.get("fixes") else ""))
+
+    def add(label: str, x: dict) -> None:
+        for r in x.get("reasons", []):
+            out.append(f"{label}: {str(r).strip()[:900]}")
+        for f in x.get("fixes", []):
+            out.append(f"{label}, fix: {str(f).strip()[:900]}")
+
+    if verdict["full_video"]["verdict"] != "GO":
+        add("Full video", verdict["full_video"])
     for s in verdict["shorts"]:
         if s["verdict"] != "GO":
-            out.append(f"Short {s['short']}: " + " ".join(s.get("reasons", []))[:400] + (" Fix: " + " ".join(s["fixes"])[:400] if s.get("fixes") else ""))
+            add(f"Short {s['short']}", s)
     return out
+
+
+def apply_line_fix(v: Video, find: str, replace: str) -> None:
+    """Replace one exact piece of script.txt (the old file moves to _replaced_<date>/). Used by the page's Apply button."""
+    p = v.dir / "script.txt"
+    text = p.read_text()
+    if text.count(find) != 1:
+        raise StageError("That line is not in the script exactly once any more, so nothing was changed.")
+    retire(p)
+    p.write_text(text.replace(find, replace))
+
+
+def pending_line_fixes(v: Video) -> list[dict]:
+    """The overseer's script edits that still apply (their old words are still in script.txt exactly once)."""
+    verdict = _read(v.dir / "agents" / "VERDICT.json") or {}
+    script = (v.dir / "script.txt").read_text() if (v.dir / "script.txt").exists() else ""
+    return [f for f in verdict.get("line_fixes", []) if script.count(f.get("find", "\0")) == 1]
 
 
 def plan(v: Video, verdict: dict | None, st: State, stub: bool) -> tuple[list[str], str | None, bool]:
@@ -206,6 +230,19 @@ def plan(v: Video, verdict: dict | None, st: State, stub: bool) -> tuple[list[st
             st.scene_rewrites[str(sid)] = st.scene_rewrites.get(str(sid), 0) + 1
             done.append(f"wrote a new scene for shot {sid} ({f.get('problem', '')[:90]}); the old picture is in _replaced_<date>/")
             earliest("images")
+    # 1b. pictures the overseer found wrong (scene contradicts its narration, and so on)
+    for f in (verdict or {}).get("picture_fixes", []):
+        sid = f["shot"]
+        if st.scene_rewrites.get(str(sid), 0) >= MAX_SCENE_REWRITES or not (v.dir / "images" / f"shot_{sid:03d}.png").exists():
+            continue
+        try:
+            rewrite_scene(v, sid, f["problem"], stub)
+        except StageError as e:
+            log(f"[autopilot] could not rewrite shot {sid}: {e}")
+            continue
+        st.scene_rewrites[str(sid)] = st.scene_rewrites.get(str(sid), 0) + 1
+        done.append(f"wrote a new scene for shot {sid} (the overseer: {f['problem'][:90]}); the old picture is in _replaced_<date>/")
+        earliest("images")
     # 2. notes to the pipeline in the source list
     changed, stuck = strip_source_notes(v, stub)
     if changed:
