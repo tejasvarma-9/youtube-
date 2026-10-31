@@ -812,3 +812,13 @@ class AutopilotTests(unittest.TestCase):
         ap.update(status="running", pid=__import__("os").getpid())
         (self.d / "agents" / "autopilot.json").write_text(json.dumps(ap))
         self.assertIn("data-live='1'", dashboard.render(dashboard.collect()))
+
+
+class ContinueButton(unittest.TestCase):
+    def test_unfinished_video_without_autopilot_gets_a_continue_button_only_on_the_start_server(self):
+        from pipeline import dashboard
+        vid = {"slug": "x", "status": {}, "verdict": None, "autopilot": None}
+        self.assertIn("Continue with autopilot", dashboard._autopilot(vid, "tok"))
+        self.assertEqual(dashboard._autopilot(vid, None), "")
+        vid["status"] = {"running": True}
+        self.assertEqual(dashboard._autopilot(vid, "tok"), "")

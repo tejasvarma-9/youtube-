@@ -342,7 +342,12 @@ AP_LABEL = {"running": "Autopilot is working", "ready": "Ready for your review",
 def _autopilot(vid: dict, token: str | None) -> str:
     ap = vid.get("autopilot")
     if not ap:
-        return ""
+        v = vid.get("verdict")
+        finished = v and v["full_video"]["verdict"] == "GO" and all(x["verdict"] == "GO" for x in v["shorts"])
+        if not token or vid["status"].get("running") or finished:
+            return ""
+        return (f"<section class='ap warnb'><div class='aph'><b>Not finished</b><span>The autopilot has not run on this video yet.</span>"
+                f"<button class='go-btn' data-slug='{E(vid['slug'])}'>Continue with autopilot</button></div></section>")
     cls = {"running": "running", "ready": "go"}.get(ap["status"], "nogo" if ap["status"] in ("error",) else "warnb")
     acts = "".join(f"<li><span class='c'>cycle {a['cycle']}</span> {E(a['text'])}</li>" for a in ap.get("actions", []))
     needs = "".join(f"<li>{E(x)}</li>" for x in ap.get("needs_you", []))
