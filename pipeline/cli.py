@@ -260,6 +260,8 @@ def main(argv=None) -> int:
     tr.add_argument("--login", action="store_true", help="sign in to Google again (read-only YouTube access), then stop")
     tr.add_argument("--queries", help="comma-separated YouTube searches to use instead of the defaults")
     tr.add_argument("--days", type=int, default=150, help="only videos published in the last this many days")
+    db = sub.add_parser("dashboard", help="open the crew dashboard: which agent is doing what, live")
+    db.add_argument("--no-open", action="store_true", help="only rebuild the page")
     sub.add_parser("status", help="list videos and which stages are done")
     sub.add_parser("doctor", help="check that this Mac is set up")
     vt = sub.add_parser("voice-test", help="a short sample in several voices to choose from (about 1 cent)")
@@ -316,6 +318,10 @@ def main(argv=None) -> int:
                 trends.apply(a.apply, stub=a.stub)
             else:
                 trends.run(stub=a.stub, queries=[q.strip() for q in a.queries.split(",")] if a.queries else None, days=a.days)
+        elif a.cmd == "dashboard":
+            from . import dashboard
+            p = dashboard.build() if a.no_open else dashboard.open_page()
+            log(f"  {p}")
         elif a.cmd == "status":
             cmd_status()
         elif a.cmd == "doctor":

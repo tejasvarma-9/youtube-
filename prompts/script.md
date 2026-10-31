@@ -23,4 +23,4 @@ Output exactly these three sections and nothing else, using these marker lines:
 ===FACTS===
 (one line per number or factual claim in the script, as:  F<n> | <the claim, close to the script's wording> | <S<n> or ESTIMATE>)
 ===SOURCES===
-(one line per source, as:  S<n> | <publisher and title> | <full URL>)
+(one line per source, as:  S<n> | <publisher and title> | <full URL>; nothing else: no notes to the fact-checker, no caveats, no "confirm this", because these lines are published in the description)

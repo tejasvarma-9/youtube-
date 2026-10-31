@@ -44,6 +44,6 @@ Output exactly these four sections and nothing else, using these marker lines:
 ===FACTS===
 (the full revised fact list:  F<n> | <claim> | <S<n> or ESTIMATE>)
 ===SOURCES===
-(the full revised source list:  S<n> | <publisher and title> | <full URL>)
+(the full revised source list:  S<n> | <publisher and title> | <full URL>; nothing else: no notes to the fact-checker, no caveats, no "confirm this", because these lines are published in the description)
 ===CHANGES===
 (one line per problem:  <id> | <what you changed, or why you kept it>)

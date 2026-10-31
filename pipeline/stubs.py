@@ -72,11 +72,18 @@ def llm_answer(kind: str, ctx: dict) -> str:
         for n in range(ctx.get("count", 3)):
             while k < len(free) and bad.match(free[k]["text"]):
                 k += 1
-            ids, secs = [], 0.0
-            while k < len(free) and secs < 4.0:
-                ids.append(free[k]["i"])
-                secs += free[k]["seconds"]
-                k += 1
+            avoid = [sorted(a) for a in ctx.get("avoid_sets", [])]
+            while True:
+                start, ids, secs = k, [], 0.0
+                while k < len(free) and secs < 4.0:
+                    ids.append(free[k]["i"])
+                    secs += free[k]["seconds"]
+                    k += 1
+                if sorted(ids) not in avoid or k >= len(free):
+                    break
+                k = start + 1
+                while k < len(free) and bad.match(free[k]["text"]):
+                    k += 1
             shorts.append({"opening_question": f"Stub question number {n + 1}?", "hook_text": f"Stub hook {n + 1}", "title": f"Stub short {n + 1}", "sentences": ids, "description_intro": "A stub clip from the video.",
                            "tags": ["stub", "test", "shorts"], "why": "stub"})
         return "===JSON===\n" + json.dumps({"shorts": shorts}) + "\n===END==="

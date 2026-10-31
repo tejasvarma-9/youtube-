@@ -11,6 +11,7 @@ Each picture is meant to show this scene:
 1. Pictures. Report a shot only if it has one of these problems:
    - text in the picture that is garbled, misspelled or unreadable (severity high)
    - a real company logo, a company or brand name written anywhere in the picture (on a sign, a product, a building), or a recognizable real person (severity high)
+   - a count, ratio, chart or quantity drawn in the picture that contradicts its scene or the figure it illustrates (for example 3 of 8 figures marked when the scene says 3 of 10, or "almost a third"): it misstates a checked fact (severity high)
    - any number drawn in the picture (severity high): numbers belong only in code-drawn charts
    - photorealistic or 3D instead of the channel's flat 2D style, or clearly out of style with the others (severity low)
    - clearly doesn't match its scene, or is broken (cut off, blank, duplicated subject) (severity low, or high if it is wrong in a misleading way)

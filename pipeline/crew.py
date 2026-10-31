@@ -40,7 +40,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from . import (align, config, llm, s1_script, s2_factcheck, s3_voiceover, s4_shots, s5_images, s6_assemble, s7_metadata,
+from . import (align, common, config, dashboard, llm, s1_script, s2_factcheck, s3_voiceover, s4_shots, s5_images, s6_assemble, s7_metadata,
                s8_thumbnail, s9_review, s10_qc, s11_shorts, trends)
 from .common import StageError, Video, extract_json, fill, fmt_ts, log, prompt, retire, slugify, word_count
 
@@ -53,6 +53,7 @@ MAX_VOICE_LINES_PER_RETRY = 3    # more flagged sentences than this is not a spo
 MAX_IMAGE_RETRIES = 2
 MAX_IMAGES_PER_RETRY = 12        # likewise for pictures
 MAX_REPICKS = 2
+MAX_EXTRA_FIX_ROUNDS = 1         # a Short whose rewritten lines weren't confirmed gets one more rewrite round
 MAX_SHORT_REBUILDS = 1
 MAX_CLAIM_FIX_ROUNDS = 2         # the quality check often finds a new line to flag after each fix
 SCOUT_MIN, SCOUT_MAX = 3, 5
@@ -578,6 +579,23 @@ def agent_images(v: Video, a, rep: Report, forced: bool) -> None:
 
 # --- 5. packaging ----------------------------------------------------------------------
 
+INTERNAL_NOTE = re.compile(r"(?i)fact-?checker|should (?:confirm|check|verify)|please (?:confirm|check|verify)|"
+                           r"not (?:read|checked|verified) line by line|search-result text|\bTODO\b|\bTBD\b|\bFIXME\b|"
+                           r"\bplaceholder\b|needs? (?:a )?(?:source|citation|checking)|unverified|\[citation")
+
+
+def internal_notes(v: Video) -> list[str]:
+    """Lines of the public description (and sources) that read like notes to the pipeline, not to viewers."""
+    found = []
+    for name in ("description.txt", "sources.md"):
+        p = v.dir / name
+        if p.exists():
+            for line in p.read_text().splitlines():
+                if INTERNAL_NOTE.search(line):
+                    found.append(f"{name}: \"{line.strip()[:220]}\"")
+    return found
+
+
 CLAIM_FIELDS = {"title": "title", "thumbnail text": "thumbnail_text", "description opening": "description_intro"}
 FIX_MAX_CHARS = {"title": 100, "thumbnail_text": 40, "thumbnail_before": 24, "thumbnail_after": 24, "description_intro": 400}
 
@@ -642,12 +660,20 @@ def agent_packaging(v: Video, a, rep: Report, forced: bool) -> None:
         qc = s10_qc.run(v, stub=a.stub)
         rep.retries = round_no
         rep.checked.append(f"quality check after fix round {round_no}: {'PASSED' if qc['passed'] else 'FAILED'}")
+    notes = internal_notes(v)
+    rep.checked.append(f"public description scanned for notes meant for the pipeline: {len(notes)} found")
     s9_review.run(v, stub=a.stub)
     rep.checked.append(f"review package written: out/{v.slug}/review/REVIEW.md")
     rep.details["video"] = s10_qc._video_id(v)
     rep.warnings += qc["warnings"]
     if not qc["passed"]:
         rep.fail("The quality check still fails: " + " | ".join(qc["failures"]) + f". See out/{v.slug}/qc.md.")
+    if notes and a.stub:  # the stub's own made-up source says "placeholder"; stub runs are never publishable anyway
+        rep.warnings += [f"Note meant for the pipeline in the description (ignored in a stub run): {n}" for n in notes]
+    elif notes:
+        rep.fail("The public description contains notes meant for the pipeline, not viewers: " + "; ".join(notes)
+                 + f". Delete that text from the source line in out/{v.slug}/sources.txt (keep only publisher, title and URL), "
+                 f"then run: python -m pipeline crew --slug {v.slug} --from-agent script_factcheck")
 
 
 # --- 6. Shorts -----------------------------------------------------------------------
@@ -664,7 +690,8 @@ def _rule_problems(n: int, it: dict, by_i: dict) -> list[str]:
 
 def repick(v: Video, plan: dict, n: int, stub: bool, rep: Report) -> None:
     """Choose a rejected Short again, at most MAX_REPICKS times, telling the picker why it was rejected.
-    It may not reuse sentences of the other Shorts, nor the sentences of its own rejected attempts."""
+    It may not use sentences of the other Shorts, nor repeat exactly a choice that was rejected. It MAY reuse some of
+    the rejected sentences: often the fix is the same claim plus the sentence that states its limits."""
     by_i = {s["i"]: s for s in v.read_json("timeline.json")["sentences"]}
     for attempt in range(1, MAX_REPICKS + 1):
         it = plan["shorts"][n - 1]
@@ -673,14 +700,14 @@ def repick(v: Video, plan: dict, n: int, stub: bool, rep: Report) -> None:
         others = {i for k, o in enumerate(plan["shorts"], start=1) if k != n for i in o["sentences"]}
         history = it.get("repicks", []) + [{"sentences": it["sentences"], "title": it["title"],
                                              "problems": it["review"].get("problems", [])}]
-        tried = {i for h in history for i in h["sentences"]}
+        tried = [h["sentences"] for h in history]
         feedback = "\n".join(f"- {p}" for p in it["review"].get("problems", [])) or "- (no reason given)"
         log(f"[shorts] short {n} was rejected; choosing again ({attempt} of {MAX_REPICKS}), avoiding "
             f"{len(others)} sentences of the other Shorts")
         try:
-            new = s11_shorts.choose(v, 1, stub=stub, exclude=others | tried, feedback=feedback)[0]
+            new = s11_shorts.choose(v, 1, stub=stub, exclude=others, feedback=feedback, avoid_sets=tried)[0]
         except StageError as e:
-            rep.warnings.append(f"Short {n}: choosing again failed ({str(e).splitlines()[0]})")
+            rep.warnings.append(f"Short {n}: choosing again failed: " + " ".join(str(e).split())[:700])
             return
         new["repicks"] = history
         plan["shorts"][n - 1] = new
@@ -840,6 +867,22 @@ def agent_shorts(v: Video, a, rep: Report, forced: bool) -> None:
     for n in range(1, len(plan["shorts"]) + 1):
         if plan["shorts"][n - 1]["review"]["verdict"] == "REJECT":
             repick(v, plan, n, a.stub, rep)
+    fix_again = [n for n, it in enumerate(plan["shorts"], start=1)
+                 if it["review"]["verdict"] == "FIX" and it.get("fix_rounds", 0) < MAX_EXTRA_FIX_ROUNDS]
+    if fix_again:
+        for n in fix_again:
+            it = plan["shorts"][n - 1]
+            it["fix_rounds"] = it.get("fix_rounds", 0) + 1
+            it["review_history"] = it.get("review_history", []) + [{"before": {f: it.get(f) for f in s11_shorts.QUESTION_FIELDS},
+                                                                    "problems": it["review"].get("problems", [])}]
+            it.pop("review")  # so the reviewer looks again, suggests wording, and checks it
+        log(f"[shorts] short(s) {fix_again}: the rewritten lines weren't confirmed; one more rewrite round")
+        s11_shorts.review(v, plan, stub=a.stub)
+        _save_plan(v, plan)
+        for n in fix_again:
+            verdict = plan["shorts"][n - 1]["review"]["verdict"]
+            rep.retries += 1
+            rep.fixed.append(f"Short {n}: one more rewrite round for its on-screen text, title and question; the check now says {verdict}")
 
     meta = v.dir / "metadata.json"
     parent_title = json.loads(meta.read_text()).get("title", "") if meta.exists() else v.brief().get("topic", "")
@@ -897,6 +940,22 @@ def agent_shorts(v: Video, a, rep: Report, forced: bool) -> None:
 
 # --- 7. overseer (new) -------------------------------------------------------------------
 
+def fix_commands(slug: str) -> str:
+    """The commands an overseer fix may tell Tejas to run (none of them approves, uploads or posts)."""
+    s = slug
+    return "\n".join([
+        f"- Script, facts or sources changed by hand (script.txt, facts.txt, sources.txt): python -m pipeline crew --slug {s} --from-agent script_factcheck",
+        f"- Let Claude fix what the fact-check flagged, with your notes: python -m pipeline revise {s} --notes <file>",
+        f"- A line sounds wrong: python -m pipeline redo-voice {s} \"<a few words from it>\", then python -m pipeline crew --slug {s} --from-agent voice_captions",
+        f"- Captions drift from the voice: python -m pipeline align {s}, then python -m pipeline crew --slug {s} --from-agent packaging",
+        f"- Redraw a picture: edit its scene in shots.json, move images/shot_NNN.png into _replaced_<date>/images/, then python -m pipeline crew --slug {s} --from-agent images",
+        f"- Title, thumbnail text, labels or description opening: edit them in metadata.json, then python -m pipeline crew --slug {s} --from-agent packaging",
+        f"- A Short's on-screen text, title, question or description: edit them in shorts/plan.json, then python -m pipeline crew --slug {s} --from-agent shorts",
+        f"- Choose the Shorts again from scratch: python -m pipeline crew --slug {s} --from-agent shorts --replan",
+        f"- Just look again after a fix: python -m pipeline crew --slug {s}",
+    ])
+
+
 def _read(p: Path, limit: int = 20000) -> str:
     """Text for the overseer's prompt, cut to `limit` characters. Never parse the result as JSON: use _read_json."""
     return p.read_text()[:limit] if p.exists() else "(missing)"
@@ -936,7 +995,7 @@ def agent_overseer(v: Video, a, rep: Report, forced: bool) -> dict:
                       f"narration (script sentences {it.get('sentences')}):\n{it.get('text', '')}\nquality check: {qc}\n")
     summary = (f"slug: {v.slug}\ntitle: {meta.get('title', '')}\nthumbnail text: {meta.get('thumbnail_text', '')}\n"
                f"description opening: {meta.get('description_intro', '')}\nstub run (placeholders): {stub}")
-    text = fill(prompt("overseer.md"), SUMMARY=summary, REPORTS="\n\n".join(reports), QC=_read(d / "qc.json", 8000),
+    text = fill(prompt("overseer.md"), COMMANDS=fix_commands(v.slug), SUMMARY=summary, REPORTS="\n\n".join(reports), QC=_read(d / "qc.json", 8000),
                 FACTCHECK=json.dumps(fc_short, indent=1, ensure_ascii=False)[:15000], SCRIPT=_read(d / "script.txt"),
                 FACTS=_read(d / "facts.txt"), SOURCES=_read(d / "sources.txt"), REVIEW=_read(d / "review" / "REVIEW.md", 8000),
                 SHORTS="\n".join(blocks) or "(no Shorts)")
@@ -1061,32 +1120,54 @@ def cmd_crew(a) -> Video | None:
         return None
     names = AGENTS[1:]
     first_forced = names.index(a.from_agent) if a.from_agent else None
-    confirm_cost(estimate(v, a), a)
-    running = False
+    # Which agents run: finished ones skip themselves, unless --from-agent; once one runs, every later one runs too.
+    plan, running = {}, False
     for idx, name in enumerate(names):
         forced = first_forced is not None and idx >= first_forced
         if name != "overseer" and not forced and not running and agent_done(v, name):
-            log(f"[{name}] already done, skipping")
-            continue
-        running = True  # once one agent runs, every later one runs too: its input may have changed
-        log(f"\n=== agent: {name} ===")
-        rep = Report(name, v.slug)
-        try:
-            AGENT_FUNCS[name](v, a, rep, forced)
-        except StageError as e:
-            rep.fail(str(e))
-        except Exception as e:  # a bug in an agent must still leave a report and a NO-GO, not a bare traceback
-            import traceback
-            log(traceback.format_exc())
-            rep.fail(f"The {name} agent hit an unexpected error ({type(e).__name__}: {e}). This is a bug in the crew, not in your video.")
-        rep.write(v)
-        if not rep.passed and name in STOPPING:
-            write_stopped_verdict(v, name, rep)
-            raise StageError(f"The {name} agent stopped:\n  " + "\n  ".join(rep.could_not_fix)[:3000]
-                             + f"\nReport: out/{v.slug}/agents/{name}.md. Verdict: NO-GO (out/{v.slug}/agents/VERDICT.md).\n"
-                             f"After fixing it, run: python -m pipeline crew --slug {v.slug}")
-        if not rep.passed:
-            log(f"  {name}: " + " ".join(rep.could_not_fix)[:500])
+            plan[name] = "skipped"
+        else:
+            plan[name], running = "waiting", True
+    hook = dashboard.log_hook(v)
+    common.LOG_HOOKS.append(hook)
+    outcome = "stopped"
+    try:
+        dashboard.run_started(v, plan)
+        page = dashboard.page_path()
+        log(f"Dashboard: {page}" + ("" if sys.stdin.isatty() else "  (open it in your browser)"))
+        if sys.stdin.isatty() and not a.stub:
+            dashboard.open_page()
+        confirm_cost(estimate(v, a), a)
+        for idx, name in enumerate(names):
+            forced = first_forced is not None and idx >= first_forced
+            if plan[name] == "skipped":
+                log(f"[{name}] already done, skipping")
+                continue
+            log(f"\n=== agent: {name} ===")
+            dashboard.agent_started(v, name)
+            rep = Report(name, v.slug)
+            try:
+                AGENT_FUNCS[name](v, a, rep, forced)
+            except StageError as e:
+                rep.fail(str(e))
+            except Exception as e:  # a bug in an agent must still leave a report and a NO-GO, not a bare traceback
+                import traceback
+                log(traceback.format_exc())
+                rep.fail(f"The {name} agent hit an unexpected error ({type(e).__name__}: {e}). This is a bug in the crew, not in your video.")
+            rep.write(v)
+            dashboard.agent_finished(v, name, rep.passed)
+            if not rep.passed and name in STOPPING:
+                write_stopped_verdict(v, name, rep)
+                raise StageError(f"The {name} agent stopped:\n  " + "\n  ".join(rep.could_not_fix)[:3000]
+                                 + f"\nReport: out/{v.slug}/agents/{name}.md. Verdict: NO-GO (out/{v.slug}/agents/VERDICT.md).\n"
+                                 f"After fixing it, run: python -m pipeline crew --slug {v.slug}")
+            if not rep.passed:
+                log(f"  {name}: " + " ".join(rep.could_not_fix)[:500])
+        outcome = "finished"
+    finally:
+        dashboard.run_finished(v, outcome)
+        if hook in common.LOG_HOOKS:
+            common.LOG_HOOKS.remove(hook)
     verdict = json.loads((v.dir / "agents" / "VERDICT.json").read_text())
     log(f"\nVerdict: full video {verdict['full_video']['verdict']}; " + ", ".join(
         f"Short {s['short']} {s['verdict']}" for s in verdict["shorts"]))

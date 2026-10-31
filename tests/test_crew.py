@@ -40,8 +40,9 @@ class CrewEndToEnd(unittest.TestCase):
             if kind == "shorts_review" and not state["rejected"]:
                 state["rejected"] = True
                 shorts = (kw.get("context") or {}).get("shorts", [])
-                reviews = [{"short": n, "verdict": "REJECT" if n == 2 else "PASS",
-                            "problems": ["It keeps the study's figure but drops the sentence stating its limits."] if n == 2 else []}
+                reviews = [{"short": n, "verdict": {2: "REJECT", 3: "FIX"}.get(n, "PASS"),
+                            "problems": {2: ["It keeps the study's figure but drops the sentence stating its limits."],
+                                         3: ["The hook gives away the answer."]}.get(n, [])}
                            for n in shorts]
                 return "===JSON===\n" + json.dumps({"reviews": reviews}) + "\n===END==="
             return real(prompt_text, kind, **kw)
@@ -52,7 +53,9 @@ class CrewEndToEnd(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
+        from pipeline import dashboard
         shutil.rmtree(config.OUT / cls.slug, ignore_errors=True)
+        dashboard.build()
         shutil.rmtree(config.OUT / "_crew" / "stub", ignore_errors=True)
         if (config.OUT / "SHORTS_RESULTS.md").exists():
             crew.write_results_tables()
@@ -84,7 +87,7 @@ class CrewEndToEnd(unittest.TestCase):
         history = plan["shorts"][1]["repicks"]
         self.assertEqual(len(history), 1)
         self.assertFalse(s2 & (s1 | s3))
-        self.assertFalse(s2 & set(history[0]["sentences"]))
+        self.assertNotEqual(sorted(s2), sorted(history[0]["sentences"]))
         # The reviewer's reasons went back to the picker, with the other Shorts' sentences blocked.
         second_pick = self.prompts["shorts"][1]
         self.assertIn("drops the sentence stating its limits", second_pick)
@@ -95,8 +98,31 @@ class CrewEndToEnd(unittest.TestCase):
         self.assertIn("Say what every name is", second_pick)
         self.assertIn("Three different jobs", second_pick)
         rep = json.loads((self.d / "agents" / "shorts.json").read_text())
-        self.assertEqual(rep["retries_used"], 1)
+        self.assertEqual(rep["retries_used"], 2)  # the re-pick of Short 2, and the extra rewrite round for Short 3
         self.assertTrue(any("chosen again" in f for f in rep["fixed"]))
+
+    def test_3b_unconfirmed_fix_gets_one_more_round(self):
+        plan = json.loads((self.d / "shorts" / "plan.json").read_text())
+        s3 = plan["shorts"][2]
+        self.assertEqual(s3["fix_rounds"], 1)
+        self.assertEqual(s3["review"]["verdict"], "PASS")
+        self.assertIn("The hook gives away the answer.", s3["review_history"][-1]["problems"])
+        rep = json.loads((self.d / "agents" / "shorts.json").read_text())
+        self.assertTrue(any("one more rewrite round" in f for f in rep["fixed"]))
+
+    def test_3c_dashboard_and_live_status(self):
+        from pipeline import dashboard
+        st = json.loads((self.d / "agents" / "status.json").read_text())
+        self.assertFalse(st["running"])
+        self.assertEqual(st["outcome"], "finished")
+        self.assertTrue(all(st["agents"][n]["state"] == "passed" for n in crew.AGENTS[1:]), st["agents"])
+        log = (self.d / "agents" / "run.log").read_text()
+        self.assertIn("=== agent: shorts ===", log)
+        self.assertIn("=== agent: overseer ===", log)
+        page = dashboard.page_path().read_text()
+        for needle in (self.slug, "Overseer", "Shorts", "NO-GO", "Live log"):
+            self.assertIn(needle, page)
+        self.assertEqual(cli.main(["dashboard", "--no-open"]), 0)
 
     def test_4_short_qc_and_upload_notes(self):
         for n in (1, 2, 3):
@@ -322,6 +348,67 @@ class CrewParts(unittest.TestCase):
         self.assertFalse(r["passed"])
         self.assertIn("unexpected error", r["could_not_fix"][0])
         self.assertEqual(json.loads((self.d / "agents" / "VERDICT.json").read_text())["full_video"]["verdict"], "NO-GO")
+
+    def test_internal_notes_in_the_description_stop_packaging(self):
+        (self.d / "metadata.json").write_text(json.dumps({"title": "T", "thumbnail_text": "X", "description_intro": "D"}))
+        (self.d / "video.mp4").write_bytes(b"mp4")
+        (self.d / "sources.md").write_text("S1. SEC: https://sec.gov/x\nS2. Intuit results. The figure was reported from "
+                                           "search-result text, so the fact-checker should confirm it: https://x\n")
+        (self.d / "description.txt").write_text("Intro.\n\nSources:\n" + (self.d / "sources.md").read_text())
+        ok = {"passed": True, "failures": [], "warnings": [], "checks": {}}
+        rep = crew.Report("packaging", self.slug)
+        with mock.patch.object(crew.s6_assemble, "run"), mock.patch.object(crew.s7_metadata, "run"), \
+                mock.patch.object(crew.s8_thumbnail, "run"), mock.patch.object(crew.s9_review, "run"), \
+                mock.patch.object(crew.s10_qc, "run", return_value=ok):
+            crew.agent_packaging(self.v, _args(stub=False), rep, False)
+        self.assertFalse(rep.passed)
+        self.assertIn("fact-checker should confirm", rep.could_not_fix[0])
+        self.assertIn("sources.txt", rep.could_not_fix[0])
+        (self.d / "sources.md").write_text("S1. SEC filing, how we verify claims is in the video: https://sec.gov/x\n")
+        (self.d / "description.txt").write_text("Intro.\n")
+        self.assertEqual(crew.internal_notes(self.v), [])
+
+    def test_overseer_gets_real_commands(self):
+        (self.d / "factcheck.json").write_text(json.dumps({"passed": True}))
+        (self.d / "qc.json").write_text(json.dumps({"passed": True}))
+        sent = []
+        real = llm.ask
+        with mock.patch.object(llm, "ask", lambda t, k, **kw: (sent.append(t), real(t, k, **kw))[1]):
+            crew.agent_overseer(self.v, _args(stub=True), crew.Report("overseer", self.slug), False)
+        self.assertIn(f"python -m pipeline crew --slug {self.slug} --from-agent packaging", sent[0])
+        self.assertNotIn("{{COMMANDS}}", sent[0])
+        self.assertNotIn("approve", crew.fix_commands(self.slug))
+
+    def test_spoken_question_captions_use_heard_word_times(self):
+        from pipeline import align
+        wav = self.d / "question_trimmed.wav"
+        wav.write_bytes(b"RIFF")
+        heard = [("How", 0.30, 0.45), ("does", 0.45, 0.60), ("it", 0.60, 0.70), ("pay?", 0.70, 1.10)]
+        with mock.patch.object(align, "available", return_value=True), mock.patch.object(align, "transcribe", return_value=heard):
+            times = s11_shorts.question_word_times(wav, "How does it pay?", 1.4)
+        self.assertEqual(times[0], [0.30, 0.45])
+        srt = self.d / "q.srt"
+        s11_shorts.write_srt([{"text": "How does it pay?", "words": times, "cut": 0.0, "offset": 0.0, "length": 1.4}], srt)
+        self.assertIn("00:00:00,300 -->", srt.read_text())  # not 00:00:00,000, where even spreading started it
+        self.assertIsNone(s11_shorts.question_word_times(wav, "How does it pay?", 1.4, stub=True))
+
+    def test_dashboard_shows_running_and_interrupted_runs(self):
+        from pipeline import dashboard
+        plan = {n: "waiting" for n in crew.AGENTS[1:]}
+        plan["script_factcheck"] = "skipped"
+        dashboard.run_started(self.v, plan)
+        dashboard.agent_started(self.v, "voice_captions")
+        page = dashboard.render(dashboard.collect())
+        self.assertIn("data-live='1'", page)
+        self.assertIn("Voice and captions", page)
+        self.assertIn("Already done", page)
+        # A run that died (no update for a long time, its process gone) shows as interrupted, not running forever.
+        st = dashboard.read_status(self.v)
+        st.update(updated="2026-01-01T00:00:00Z", pid=999999)
+        (self.d / "agents" / "status.json").write_text(json.dumps(st))
+        vid = next(v for v in dashboard.collect() if v["slug"] == self.slug)
+        self.assertEqual(vid["status"]["outcome"], "interrupted")
+        self.assertEqual(dashboard._state("voice_captions", vid), "stopped")
 
     def test_cost_estimate_and_confirmation(self):
         rows = crew.estimate(self.v, _args())

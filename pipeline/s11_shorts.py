@@ -90,7 +90,7 @@ def question_seconds(question: str | None) -> float:
 
 
 def validate_plan(plan: dict, sentences: list[dict], count: int, stub: bool = False,
-                  exclude=()) -> tuple[list[dict], list[str]]:
+                  exclude=(), avoid_sets=()) -> tuple[list[dict], list[str]]:
     """The chosen Shorts with their lengths and texts, and everything wrong with the choice.
     exclude: sentence numbers other Shorts already use (when one Short is chosen again)."""
     by_i = {s["i"]: s for s in sentences}
@@ -121,6 +121,9 @@ def validate_plan(plan: dict, sentences: list[dict], count: int, stub: bool = Fa
             problems.append(f"{label}: uses blocked sentence(s) {sorted(set(ids) & blocked)} (welcome line, channel name or ending).")
         if set(ids) & exclude:
             problems.append(f"{label}: uses sentence(s) {sorted(set(ids) & exclude)}, which another Short already uses or which were rejected.")
+        if any(sorted(ids) == sorted(a) for a in avoid_sets):
+            problems.append(f"{label}: these exact sentences {ids} were already rejected. Change the choice (you may keep "
+                            "some of them, for example the claim, and add the sentence that fixes the problem).")
         if set(ids) & used:
             problems.append(f"{label}: reuses sentence(s) {sorted(set(ids) & used)} from another Short.")
         used |= set(ids)
@@ -308,7 +311,7 @@ def past_results_text(limit: int = 12) -> str:
     return "\n".join(out)
 
 
-def choose(video: Video, count: int, stub: bool = False, exclude=(), feedback: str = "") -> list[dict]:
+def choose(video: Video, count: int, stub: bool = False, exclude=(), feedback: str = "", avoid_sets=()) -> list[dict]:
     """Ask Claude for `count` Shorts. exclude: sentence numbers it may not use (other Shorts' sentences, or ones
     already rejected); feedback: the reviewer's reasons for rejecting the last choice, passed back to the picker."""
     tl = video.read_json("timeline.json")
@@ -323,14 +326,17 @@ def choose(video: Video, count: int, stub: bool = False, exclude=(), feedback: s
                 PAST_RESULTS=past_results_text(), TRENDS=trends.writer_notes(stub))
     if feedback:
         base += ("\n\nA reviewer who did not choose them REJECTED an earlier choice for this Short, for these reasons. "
-                 "Choose different sentences that avoid every one of these problems:\n" + feedback.strip() + "\n")
+                 "Choose sentences that fix every one of these problems. You may keep some of the rejected sentences "
+                 "(often the claim itself) and add the ones that fix it, but not the exact same set:\n" + feedback.strip() + "\n")
+        if avoid_sets:
+            base += "Rejected sets (do not choose exactly one of these again): " + "; ".join(str(list(a)) for a in avoid_sets) + "\n"
     ctx = {"sentences": [{"i": s["i"], "text": s["text"], "seconds": length_of(s)} for s in sentences],
-           "blocked": sorted(blocked), "count": count}
+           "blocked": sorted(blocked), "count": count, "avoid_sets": [list(a) for a in avoid_sets]}
     extra = ""
     for attempt in (1, 2):
         answer = llm.ask(base + extra, "shorts", stub=stub, context=ctx)
         video.path("shorts", "raw", f"plan_answer_{attempt}.md").write_text(answer)
-        items, problems = validate_plan(extract_json(answer), sentences, count, stub=stub, exclude=exclude)
+        items, problems = validate_plan(extract_json(answer), sentences, count, stub=stub, exclude=exclude, avoid_sets=avoid_sets)
         if not problems:
             return items
         log("  the plan had problems:\n    " + "\n    ".join(problems))
@@ -538,6 +544,21 @@ def record_question(video: Video, question: str, d, stub: bool = False):
     return raw
 
 
+def question_word_times(path, question: str, length: float, stub: bool = False) -> list | None:
+    """When each word of the spoken opening question is said, heard by the speech recognizer. The question is a fresh
+    recording with no timings of its own; spreading its words evenly put its captions up to a second off."""
+    from . import align
+    if stub or not align.available() or not path.exists():
+        return None
+    try:
+        heard = align.transcribe(path)
+    except Exception as e:  # a recognizer problem must not stop the Short; even spreading is the fallback
+        log(f"  WARNING: couldn't time the opening question's captions ({e}); they are spread evenly.")
+        return None
+    times = align.match([{"text": question}], heard, length)
+    return times[0] if times and len(times[0]) == len(question.split()) else None
+
+
 def _audio(video: Video, segs: list[dict], out, loud: bool, question=None) -> float:
     """Cut and join the narration (after the opening question, if any). Returns the question's length with its pause."""
     ffmpeg = find_ffmpeg()[0]
@@ -600,8 +621,9 @@ def build_short(video: Video, n: int, item: dict, stub: bool = False) -> dict:
         s["offset"] = s["offset"] * scale + q_len
         s["length"] *= scale
     caption_parts = list(segs)
-    if question:  # the question's words spread evenly over its recording (it has no word timings)
-        caption_parts.insert(0, {"text": question, "words": None, "cut": 0.0, "offset": 0.0, "length": q_len})
+    if question:  # the question's captions are timed from what is heard in its recording (evenly spread if that fails)
+        q_words = question_word_times(d / "question_trimmed.wav", question, q_len, stub=not loud)
+        caption_parts.insert(0, {"text": question, "words": q_words, "cut": 0.0, "offset": 0.0, "length": q_len})
     write_srt(caption_parts, d / "captions.srt")
 
     # One picture per run of sentences that share a shot, re-framed at least every HOLD_S seconds.

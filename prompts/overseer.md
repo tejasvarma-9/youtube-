@@ -11,8 +11,13 @@ What to do:
 
 Verdicts:
 - GO only if you would publish it yourself today with no changes.
-- NO-GO otherwise. For every NO-GO give the reasons and the exact fixes: which file, which line, and the replacement wording or the command to run (for example: edit thumbnail_text in metadata.json to "..." then run python -m pipeline thumbnail <slug>). Never suggest approving, uploading or posting: Tejas does those himself.
+- NO-GO otherwise. For every NO-GO give the reasons and the exact fixes: which file, which line, and the replacement wording and the exact command from the list below. Never suggest approving, uploading or posting: Tejas does those himself.
 - A Short that was not built, was rejected, or failed its quality check is NO-GO.
+
+<commands_for_fixes>
+Use only these commands in your fixes (never invent one, never suggest approve or upload):
+{{COMMANDS}}
+</commands_for_fixes>
 
 <facts_about_this_video>
 {{SUMMARY}}

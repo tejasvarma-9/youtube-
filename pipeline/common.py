@@ -15,8 +15,16 @@ class StageError(RuntimeError):
     """A stage cannot continue; the message tells Tejas what to do."""
 
 
+LOG_HOOKS: list = []  # extra places every log line goes (the crew's run.log and live dashboard)
+
+
 def log(msg: str) -> None:
     print(msg, file=sys.stderr, flush=True)
+    for hook in list(LOG_HOOKS):
+        try:
+            hook(msg)
+        except Exception:  # a log side-channel must never stop the pipeline
+            pass
 
 
 def slugify(text: str) -> str:
