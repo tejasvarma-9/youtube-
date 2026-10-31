@@ -242,7 +242,9 @@ def _station(k: int, name: str, title: str, vid: dict) -> str:
     r = vid["reports"].get(name) or {}
     sub = _duration(a) or SHORT.get(state, "")
     flags = ""
-    if r and (r.get("could_not_fix") or state == "stopped"):
+    if state in ("not run", "waiting"):
+        flags = ""  # an old report's flags would mislead: this agent has not run in the current run
+    elif r and (r.get("could_not_fix") or state == "stopped"):
         flags = "<i class='flag bad' title='Could not fix something'></i>"
     elif r and r.get("warnings"):
         flags = "<i class='flag warn' title='Worth a look'></i>"
@@ -359,7 +361,7 @@ CSS = """
 *{box-sizing:border-box}[hidden]{display:none!important}
 body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 var(--sans);-webkit-font-smoothing:antialiased}
 button{font:inherit;color:inherit}:focus-visible{outline:3px solid var(--run);outline-offset:2px;border-radius:6px}
-.top{display:flex;align-items:center;gap:14px;padding:12px clamp(16px,4vw,40px);background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+.top{display:flex;align-items:center;gap:14px;padding:12px clamp(16px,4vw,40px);background:var(--panel);border-bottom:1px solid var(--line)}
 .brand{font:700 18px var(--serif);letter-spacing:.2px}.brand span{color:var(--money)}
 .pick{margin-left:auto;display:flex;gap:6px;overflow:auto;max-width:60%}
 .pick a{padding:6px 12px;border-radius:999px;color:var(--muted);text-decoration:none;white-space:nowrap;font-size:13px;border:1px solid transparent}
