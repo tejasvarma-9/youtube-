@@ -13,7 +13,7 @@ Each line: [number] (start in seconds, length in seconds) sentence
 {{SENTENCES}}
 </sentences>
 
-Sentence numbers you may NOT use (the welcome line, the channel name, the ending, and any sentence another Short already uses): {{BLOCKED}}
+Sentence numbers you may NOT use (the welcome line, the channel name, the ending, and any sentence another Short already uses, and the video's first 30 seconds, which stay new for viewers who tap through to the full video): {{BLOCKED}}
 
 <past_results>
 How earlier Shorts on this channel did, best held first. Retention is the share of the Short the average viewer watched. Repeat the SHAPE of openings that held people (never their content), and avoid shapes that most people swiped past.

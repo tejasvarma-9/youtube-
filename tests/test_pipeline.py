@@ -765,6 +765,17 @@ class ShortsPlanning(unittest.TestCase):
         self.assertEqual(sh.written_problems("S", "Hilton kept running the hotel.", "Why keep it?", "T", "D", "Who runs it?"), [])
         self.assertTrue(sh.written_problems("S", "x", "Why keep it?", "T", "D", "No question mark"))
 
+    def test_shorts_skip_the_videos_opening(self):
+        from pipeline import s11_shorts as sh
+        rows = self.rows()
+        self.assertEqual(sh.opening_sentences(rows, stub=True), set())
+        opening = sh.opening_sentences(rows)          # starts at 0, 6, 12, 18, 24 are inside the first 30 s
+        self.assertEqual(opening, {1, 2, 3, 4, 5})
+        plan = {"shorts": [{"hook_text": "Free, so who paid?", "title": "Who paid $776 million?", "sentences": [2, 6],
+                            "description_intro": "A look at the money.", "tags": ["a"]}]}
+        _, problems = sh.validate_plan(plan, rows, 1)
+        self.assertIn("first 30 seconds", " ".join(problems))
+
     def test_review_applies_fixes_and_blocks_rejects(self):
         from pipeline import s11_shorts as sh
         from pipeline.common import Video

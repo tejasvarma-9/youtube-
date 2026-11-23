@@ -137,6 +137,12 @@ def cmd_auto(a) -> Video:
         log(f"[auto] Finished, but the quality check FAILED ({len(qc['failures'])} problems). "
             f"See out/{slug}/qc.md before approving.")
     log(f"Review: open out/{slug}/review/REVIEW.md")
+    if getattr(a, "shorts", False):
+        if qc["passed"]:
+            log("\n[auto] Building the Shorts from the finished script")
+            s11_shorts.run(v, count=config.SHORTS_COUNT, stub=a.stub)
+        else:
+            log("[auto] Shorts skipped: the quality check did not pass.")
     return v
 
 
@@ -209,6 +215,7 @@ def main(argv=None) -> int:
     au.add_argument("--notes", help="anything else the writer should know")
     au.add_argument("--words", type=int, default=config.TARGET_WORDS)
     au.add_argument("--slug")
+    au.add_argument("--shorts", action="store_true", help="after a passing quality check, also build the Shorts (still need your approval to post)")
 
     r = sub.add_parser("run", help="run every stage that isn't done yet")
     r.add_argument("slug")
