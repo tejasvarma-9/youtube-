@@ -106,6 +106,7 @@ WORDS_HARD_MAX = 2100  # about 11.5 minutes; longer scripts must be cut
 SHORT_WIDTH, SHORT_HEIGHT = 1080, 1920
 SHORT_MIN_S, SHORT_MAX_S = 20.0, 58.0   # YouTube allows up to 3 minutes; under a minute holds attention best
 SHORT_END_CARD_S = 0.0                   # no end card: a Short that points viewers elsewhere stops being shown
+SHORT_SKIP_OPENING_S = 30.0              # Shorts are cut from the middle: the full video's opening stays new to anyone who clicks through
 SHORTS_COUNT = 3                         # per video; the command accepts 2 to 4
 
 DISCLAIMER = (

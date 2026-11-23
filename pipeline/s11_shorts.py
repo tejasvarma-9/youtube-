@@ -66,6 +66,16 @@ def blocked_sentences(sentences: list[dict]) -> set[int]:
     return {s["i"] for s in sentences if name_re.search(s["text"]) or s.get("paragraph", 0) >= last - 1}
 
 
+def opening_sentences(sentences: list[dict], stub: bool = False) -> set[int]:
+    """Sentences that start inside the video's first SHORT_SKIP_OPENING_S seconds.
+
+    A Short that replays the full video's opening makes anyone who taps through hear it twice (the hotel video lost
+    returning viewers twice as fast in its first 16 seconds), so Shorts are cut from the middle instead."""
+    if stub or config.SHORT_SKIP_OPENING_S <= 0:
+        return set()
+    return {s["i"] for s in sentences if s["start"] < config.SHORT_SKIP_OPENING_S}
+
+
 def cut_points(s: dict) -> tuple[float, float]:
     """Where in voiceover.wav a sentence is cut: from just before its first word to just after its last."""
     words = s.get("words") or []
@@ -85,6 +95,7 @@ def validate_plan(plan: dict, sentences: list[dict], count: int, stub: bool = Fa
     """The chosen Shorts with their lengths and texts, and everything wrong with the choice."""
     by_i = {s["i"]: s for s in sentences}
     blocked = blocked_sentences(sentences)
+    opening = opening_sentences(sentences, stub)
     min_s = 3.0 if stub else config.SHORT_MIN_S
     problems, items, used = [], [], set()
     raw = plan.get("shorts") if isinstance(plan, dict) else None
@@ -108,6 +119,9 @@ def validate_plan(plan: dict, sentences: list[dict], count: int, stub: bool = Fa
             continue
         if set(ids) & blocked:
             problems.append(f"{label}: uses blocked sentence(s) {sorted(set(ids) & blocked)} (welcome line, channel name or ending).")
+        if set(ids) & opening:
+            problems.append(f"{label}: uses sentence(s) {sorted(set(ids) & opening)} from the first {config.SHORT_SKIP_OPENING_S:.0f} seconds "
+                            f"of the video. Cut Shorts from later in the video so its opening stays new to anyone who clicks through.")
         if set(ids) & used:
             problems.append(f"{label}: reuses sentence(s) {sorted(set(ids) & used)} from another Short.")
         used |= set(ids)
@@ -245,7 +259,7 @@ def write_questions(video: Video, plan: dict, targets: list[int], stub: bool = F
 def choose(video: Video, count: int, stub: bool = False) -> list[dict]:
     tl = video.read_json("timeline.json")
     sentences = tl["sentences"]
-    blocked = blocked_sentences(sentences)
+    blocked = blocked_sentences(sentences) | opening_sentences(sentences, stub)
     meta_path = video.dir / "metadata.json"
     title = json.loads(meta_path.read_text()).get("title", "") if meta_path.exists() else video.brief().get("topic", "")
     lines = "\n".join(f"[{s['i']}] ({s['start']:.1f}s, {length_of(s):.1f}s) {s['text']}" for s in sentences)

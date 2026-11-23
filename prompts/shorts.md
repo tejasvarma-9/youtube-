@@ -13,7 +13,7 @@ Each line: [number] (start in seconds, length in seconds) sentence
 {{SENTENCES}}
 </sentences>
 
-Sentence numbers you may NOT use (the welcome line, the channel name, the ending): {{BLOCKED}}
+Sentence numbers you may NOT use (the welcome line, the channel name, the ending, and the video's first 30 seconds, which stay new for viewers who tap through to the full video): {{BLOCKED}}
 
 Pick {{COUNT}} different Shorts. Each Short is a list of sentence numbers in increasing order. They do not have to be neighbours, but every sentence you keep must still make sense after the ones between them are cut.
 
@@ -24,10 +24,13 @@ Rules for every Short:
 - The Short must be understandable on its own: no sentence may refer to something that is not in the Short ("the study", "that figure", "the three brokers") unless the Short includes the sentence that introduces it.
 - End on the payoff: the answer, the reveal, or the line that explains what it all means. Never end mid-explanation, on a minor detail, or on anything that asks the viewer to watch the full video, like, subscribe or comment.
 - Keep numbers together with the thing they measure and the date or company they belong to: if you keep a figure, keep the sentence that says whose it is and when.
+- If the script limits or qualifies a figure or claim (an estimate, a single study, one company, one year, "may", "about"), keep the sentence that states the limit in the same Short. A Short that drops the limit overstates the claim, and the check will reject it.
+- If a Short names a company, product or program, keep the sentence that says what it is, unless any viewer would already know it (for example Netflix or Spotify).
 - Do not include sentences that give advice or say "you should".
 - Use different parts of the video for different Shorts (the puzzle, the key reveal, the surprising counterpoint, the honest limits). Do not reuse a sentence across Shorts.
 
 For each Short also write:
+- The opening question, the on-screen text and the first narration line must be three different things: the question asks, the text sets up the puzzle, the first sentence gives the first fact. If two of them say the same thing, rewrite one.
 - opening_question: one new question the narrator will speak BEFORE the first sentence, recorded in the same voice. At most 14 words, ends with "?", plain spoken words, answered by the Short's narration by the end, does not give the answer away, and relies only on what the Short's own sentences say (no new numbers, names or claims).
 - hook_text: the text shown on screen above the picture for the whole Short. It sets up the question the narration answers, so a viewer reading it in two seconds wants to stay to the end. It is NOT a copy of the first sentence and it must NOT give away the answer. At most 42 characters, plain words, sentence case, no hashtags, no emojis. It may only say what the Short's own sentences support, and every number in it must appear in those sentences. Examples of the shape (not the content): "They own it. They can't run it." / "Why would anyone pay that much?"
 - title: under 70 characters, curiosity-driven, plain words, no hashtags, no emojis, no clickbait claims the sentences do not support. Every number in it must appear in the Short's own sentences.
