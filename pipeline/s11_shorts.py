@@ -702,6 +702,11 @@ def run(video: Video, count: int = config.SHORTS_COUNT, only: int | None = None,
     plan = None if replan else _plan_current(video, plan_path)
     if plan:
         log(f"  using the Shorts plan in out/{video.slug}/shorts/plan.json (add --replan to choose again)")
+        opening = opening_sentences(tl["sentences"], stub)
+        early = [n for n, it in enumerate(plan["shorts"], start=1) if set(it["sentences"]) & opening]
+        if early:
+            log(f"  note: Short(s) {early} in this saved plan use the video's first {config.SHORT_SKIP_OPENING_S:.0f} seconds, "
+                f"which new plans avoid. Add --replan to choose again from the middle of the video.")
     else:
         items = choose(video, count, stub=stub)
         plan = {"version": PLAN_VERSION, "script_sha": hashlib.sha1(video.read_text("script.txt").encode()).hexdigest()[:12],
