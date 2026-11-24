@@ -119,7 +119,7 @@ def _batch_results(op: dict, keys: list[str]) -> dict[str, dict]:
 
 def _prompt(shot: dict) -> str:
     """Built from the scene at request time, so an edited scene in shots.json is what gets drawn."""
-    return f"{shot['scene']}\n\n{config.IMAGE_STYLE_SUFFIX}"
+    return f"{shot['scene']}\n\n{config.style_suffix(shot.get('background', ''))}"
 
 
 def run(video: Video, stub: bool = False, sync: bool = False) -> None:

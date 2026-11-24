@@ -828,5 +828,37 @@ class ShortsPlanning(unittest.TestCase):
         self.assertEqual(flat, list(range(7)))
 
 
+class SectionColorTests(unittest.TestCase):
+    def _video(self):
+        sents, shots = [], []
+        for i in range(1, 25):  # 24 sentences, 10 s each, a new paragraph every 4
+            sents.append({"i": i, "start": (i - 1) * 10.0, "paragraph": (i - 1) // 4, "text": f"S{i}."})
+            shots.append({"id": i, "start": (i - 1) * 10.0, "end": i * 10.0, "sentences": [i]})
+        return sents, shots
+
+    def test_color_changes_at_paragraph_breaks_after_minimum(self):
+        from pipeline.s4_shots import assign_backgrounds
+        sents, shots = self._video()
+        with mock.patch.object(config, "SECTION_MIN_SECONDS", 40.0):
+            assign_backgrounds(shots, sents)
+        colors = [s["background"] for s in shots]
+        self.assertEqual(colors[0], config.SECTION_BACKGROUNDS[0])
+        self.assertEqual(len(set(colors[:4])), 1)  # one section: 40 s
+        self.assertEqual(colors[4], config.SECTION_BACKGROUNDS[1])  # next paragraph starts the next color
+        for a, b in zip(shots, shots[1:]):  # never changes in the middle of a paragraph
+            if a["background"] != b["background"]:
+                self.assertNotEqual(sents[a["sentences"][-1] - 1]["paragraph"], sents[b["sentences"][0] - 1]["paragraph"])
+
+    def test_off_switch_and_old_videos_keep_white(self):
+        from pipeline.s4_shots import assign_backgrounds
+        sents, shots = self._video()
+        with mock.patch.object(config, "SECTION_MIN_SECONDS", 0.0):
+            assign_backgrounds(shots, sents)
+        self.assertTrue(all("background" not in s for s in shots))
+        self.assertIn("white or light gray-blue", config.style_suffix(""))
+        self.assertIn("lavender", config.style_suffix(config.SECTION_BACKGROUNDS[3]))
+        self.assertIn("No text of any kind", config.style_suffix(config.SECTION_BACKGROUNDS[0]))
+
+
 if __name__ == "__main__":
     unittest.main()
