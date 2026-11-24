@@ -57,12 +57,14 @@ Use only these commands in your fixes (never invent one, never suggest approve o
 
 Two optional lists let the crew fix small things without Tejas typing anything. Use them only when they are exactly right:
 - picture_fixes: a picture whose scene contradicts its narration or looks wrong. {"shot": 19, "problem": "what is wrong, in plain words"}. Say what is wrong, not how to redraw it: a separate step writes the new scene.
-- line_fixes: a script line that overstates its source. {"file": "script.txt", "find": "the exact words now in the script, copied character for character, long enough to occur once", "replace": "the corrected words, no stronger than the source", "why": "one short sentence"}. Only script.txt. A replacement may weaken or correct a claim; it may never add a fact or a number the sources do not give. Tejas clicks to apply each one, so he sees it first.
+- line_fixes: a script line that overstates its source. {"file": "script.txt", "find": "the exact words now in the script, copied character for character, long enough to occur once", "replace": "the corrected words, no stronger than the source", "why": "one short sentence"}. Only script.txt. A replacement may weaken or correct a claim; it may never add a fact or a number the sources do not give. Keep it short: cut words rather than add qualifiers, and add at most 12 words. Autopilot applies these by itself when they add no new number and break no script rule, then the fact-check runs again.
+- meta_fixes: a corrected title, thumbnail text or description opening. {"field": "title" | "thumbnail_text" | "description_intro", "value": "the exact new text", "why": "one short sentence"}. A title must start "Who Really Pays for" and stay under 60 characters. Thumbnail text is 2 to 5 words, names both sides of any comparison, and uses only a ratio the script says. Autopilot applies these by itself. Give the exact text, never a choice of options.
+Whenever a fix can be written as a line_fix, meta_fix or picture_fix, write it there, not only in "fixes": those are applied without Tejas.
 
 Output only this JSON between the marker lines:
 ===JSON===
 {"full_video": {"verdict": "GO", "reasons": [], "fixes": []},
- "picture_fixes": [], "line_fixes": [],
+ "picture_fixes": [], "line_fixes": [], "meta_fixes": [],
  "shorts": [{"short": 1, "verdict": "GO", "reasons": [], "fixes": []}],
  "rechecked_claims": [{"claim": "the exact words", "source_url": "", "result": "CONFIRMED", "note": ""}],
  "summary": "two or three plain sentences for Tejas"}

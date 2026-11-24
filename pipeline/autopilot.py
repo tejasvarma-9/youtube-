@@ -14,8 +14,17 @@ SAFE edits, and only these:
     inside the frame); the old picture moves to _replaced_<date>/; at most 2 rewrites per picture;
   - a note to the pipeline sitting in sources.txt: the note is cut (the id, publisher, title and URL are kept
     exactly, or the line is left alone and you are told);
-  - a Short that was rejected or failed its quality check: chosen again (once), then from scratch (once).
-It never edits a fact, a number, a claim or a source, and never changes the script. Those come back to you.
+  - a Short that was rejected or failed its quality check: chosen again (once), then from scratch (once);
+  - the overseer's exact script edits (line_fixes), only when each one: is still in script.txt exactly once, adds
+    no number that is not already in the fact list, adds at most 12 words, and breaks no script rule. The full
+    fact-check and audit then run again on the changed sentences. At most 2 rounds per run;
+  - the overseer's title, thumbnail text or description opening (meta_fixes): saved to metadata_overrides.json, so
+    later re-runs keep them; the title must stay on the channel template;
+  - an agent that stopped: run again once by itself (the voice agent after re-timing the captions), after any of
+    the fixes above that apply. A Claude timeout or hiccup is retried inside every step, and on Claude's usage
+    limit the run waits for the reset (up to 6 hours) and carries on.
+It never adds a fact or a source, and never edits facts.txt or sources.txt. Anything else comes back to you,
+and every edit it made is listed in AUTOPILOT.md (old files in _replaced_<date>/).
 
 Hard rules, unchanged: it never runs approve, never uploads, never posts. It stops when the money spent in this
 run reaches --cap (default $2.00 per video), and before a cycle whose cost estimate would pass it.
@@ -38,9 +47,13 @@ from .common import StageError, Video, fill, log, prompt, retire
 CAP_USD = 2.00
 MAX_CYCLES = 6
 MAX_SCENE_REWRITES = 2   # per picture
-MAX_SHORT_REPICKS = 2    # first: choose the rejected ones again; second: choose all of them from scratch
+MAX_SHORT_REPICKS = 1    # first: choose the rejected ones again; second: choose all of them from scratch
+MAX_SCRIPT_FIX_ROUNDS = 2
+MAX_AGENT_RETRIES = 1    # an agent that stopped is run again by itself this many times per run before it asks you
+MAX_FIX_EXTRA_WORDS = 12
 SAFE_LIST = ("a picture the checker rejected (a new scene is written)", "a note to the pipeline in sources.txt (cut out)",
-             "a rejected Short (chosen again)")
+             "a rejected Short (chosen again)", "the overseer's exact script edits (no new numbers)",
+             "the overseer's title, thumbnail text or description opening")
 
 
 def _now() -> str:
@@ -56,6 +69,8 @@ class State:
         old = json.loads(p.read_text()) if p.exists() else {}
         self.scene_rewrites: dict[str, int] = dict(old.get("scene_rewrites", {}))
         self.short_repicks = 0
+        self.script_fix_rounds = 0
+        self.agent_retries: dict[str, int] = {}
         self.cycle, self.spent = 0, 0.0
         self.actions: list[dict] = []
         self.needs_you: list[str] = []
@@ -166,7 +181,9 @@ def _read(p: Path):
 
 
 def all_go(verdict: dict | None) -> bool:
-    return bool(verdict) and verdict["full_video"]["verdict"] == "GO" and all(s["verdict"] == "GO" for s in verdict["shorts"])
+    shorts_needed = config.SHORTS_COUNT > 0
+    return (bool(verdict) and verdict["full_video"]["verdict"] == "GO" and (verdict["shorts"] or not shorts_needed)
+            and all(s["verdict"] == "GO" for s in verdict["shorts"]))
 
 
 def needs_from_verdict(v: Video, verdict: dict | None) -> list[str]:
@@ -206,6 +223,65 @@ def pending_line_fixes(v: Video) -> list[dict]:
     return [f for f in verdict.get("line_fixes", []) if script.count(f.get("find", "\0")) == 1]
 
 
+def _line_fix_problem(script: str, facts: str, find: str, replace: str) -> str | None:
+    """Why autopilot must not apply this edit by itself (None: safe)."""
+    from . import cards, lint
+    if script.count(find) != 1:
+        return "its old words are no longer in the script exactly once"
+    new_numbers = (cards.numbers_in(replace, words=False) - cards.numbers_in(find, words=False)
+                   - cards.numbers_in(facts, words=False))
+    if new_numbers:
+        return "it adds a number that is not in the fact list (" + ", ".join(f"{n:g}" for n in sorted(new_numbers)) + ")"
+    if len(replace.split()) - len(find.split()) > MAX_FIX_EXTRA_WORDS:
+        return f"it adds more than {MAX_FIX_EXTRA_WORDS} words"
+    before = set(lint.lint_script(script, facts)["errors"])
+    after = set(lint.lint_script(script.replace(find, replace), facts)["errors"]) - before
+    if after:
+        return "it would break a script rule: " + sorted(after)[0][:160]
+    return None
+
+
+def apply_safe_line_fixes(v: Video, verdict: dict | None) -> tuple[list[str], list[str]]:
+    """Apply every overseer script edit that passes _line_fix_problem. Returns (applied, skipped with reasons)."""
+    p, fp = v.dir / "script.txt", v.dir / "facts.txt"
+    if not verdict or not p.exists():
+        return [], []
+    script, facts = p.read_text(), fp.read_text() if fp.exists() else ""
+    applied, skipped = [], []
+    for f in verdict.get("line_fixes", []):
+        find, rep = f.get("find", ""), f.get("replace", "")
+        why = _line_fix_problem(script, facts, find, rep)
+        if why:
+            skipped.append(f"\"{find[:70]}\": {why}")
+            continue
+        script = script.replace(find, rep)
+        applied.append(f"\"{find[:60]}\" -> \"{rep[:60]}\"")
+    if applied:
+        retire(p)
+        p.write_text(script)
+    return applied, skipped
+
+
+def apply_meta_fixes(v: Video, verdict: dict | None) -> list[str]:
+    from . import s7_metadata
+    from .lint import lint_title
+    done = []
+    current = s7_metadata.overrides(v)
+    meta = _read(v.dir / "metadata.json") or {}
+    for f in (verdict or {}).get("meta_fixes", []):
+        field, val = f["field"], f["value"]
+        if field == "thumbnail_text":
+            val = val.upper()
+        if field == "title" and any("Off template" in x or "characters" in x for x in lint_title(val, "A B")):
+            log(f"[autopilot] skipped the overseer's title \"{val}\": it is off the channel template")
+            continue
+        if current.get(field) == val or meta.get(field) == val:
+            continue
+        s7_metadata.set_override(v, field, val)
+        done.append(f"set the {field.replace('_', ' ')} to \"{val[:90]}\" (saved in metadata_overrides.json)")
+    return done
+
+
 def plan(v: Video, verdict: dict | None, st: State, stub: bool) -> tuple[list[str], str | None, bool]:
     """Apply every safe fix that applies. Returns (what was done, the agent to re-run from, replan the Shorts)."""
     done, first, replan = [], None, False
@@ -243,6 +319,51 @@ def plan(v: Video, verdict: dict | None, st: State, stub: bool) -> tuple[list[st
         st.scene_rewrites[str(sid)] = st.scene_rewrites.get(str(sid), 0) + 1
         done.append(f"wrote a new scene for shot {sid} (the overseer: {f['problem'][:90]}); the old picture is in _replaced_<date>/")
         earliest("images")
+    # 1b2. pictures the full-video quality check flagged as high severity
+    qc = _read(v.dir / "qc.json") or {}
+    if _ran(v, "packaging") and not qc.get("passed"):
+        for f in ((qc.get("checks") or {}).get("claude_review") or {}).get("images", []) or []:
+            try:
+                sid = int(f.get("shot"))
+            except (TypeError, ValueError):
+                continue
+            if f.get("severity") != "high" or st.scene_rewrites.get(str(sid), 0) >= MAX_SCENE_REWRITES:
+                continue
+            try:
+                rewrite_scene(v, sid, f.get("problem", ""), stub)
+            except StageError as e:
+                log(f"[autopilot] could not rewrite shot {sid}: {e}")
+                continue
+            st.scene_rewrites[str(sid)] = st.scene_rewrites.get(str(sid), 0) + 1
+            done.append(f"wrote a new scene for shot {sid} (the quality check: {f.get('problem', '')[:90]}); old picture in _replaced_<date>/")
+            earliest("images")
+    # 1c. the overseer's exact script edits, and its title / thumbnail / description edits
+    if st.script_fix_rounds < MAX_SCRIPT_FIX_ROUNDS:
+        applied, skipped = apply_safe_line_fixes(v, verdict)
+        for s in skipped:
+            log(f"[autopilot] left a script edit for you: {s}")
+        if applied:
+            st.script_fix_rounds += 1
+            done.append("applied the overseer's script edit(s): " + "; ".join(applied) + " (old script in _replaced_<date>/)")
+            earliest("script_factcheck")
+    meta_done = apply_meta_fixes(v, verdict)
+    if meta_done:
+        done += meta_done
+        earliest("packaging")
+    # 1d. an agent that stopped: run it again by itself (once), after the one automatic repair that fits it
+    stopped = (verdict or {}).get("stopped_at")
+    if stopped and first is None and st.agent_retries.get(stopped, 0) < MAX_AGENT_RETRIES:
+        st.agent_retries[stopped] = st.agent_retries.get(stopped, 0) + 1
+        note = ""
+        if stopped == "voice_captions":
+            try:
+                from .cli import cmd_align
+                cmd_align(v)
+                note = " after re-timing the captions from the voice"
+            except StageError as e:
+                log(f"[autopilot] re-timing the captions did not work: {str(e)[:200]}")
+        done.append(f"the {stopped} agent stopped; ran it again by itself{note} (try {st.agent_retries[stopped]} of {MAX_AGENT_RETRIES})")
+        earliest(stopped)
     # 2. notes to the pipeline in the source list
     changed, stuck = strip_source_notes(v, stub)
     if changed:
@@ -306,12 +427,21 @@ def run(a) -> State:
                 crew.cmd_crew(ns)
             except StageError as e:
                 log(f"[autopilot] the crew stopped: {str(e)[:300]}")
+                if "hit your" in str(e) and "limit" in str(e):
+                    st.finish("limit", "Stopped: Claude's usage limit was reached. Nothing is lost: run the same command again "
+                                       "after the limit resets, and finished agents skip themselves.",
+                              [f"After the reset: python -m pipeline autopilot --slug {v.slug}"])
+                    return st
             st.spent += _ran_cost(v)
             ns.from_agent, ns.replan = None, False
             verdict = _read(v.dir / "agents" / "VERDICT.json")
             if all_go(verdict):
                 st.finish("ready", "Everything is GO. Read the verdict, watch the video, then approve it yourself.")
                 return st
+            if verdict and verdict["full_video"]["verdict"] == "GO" and not verdict["shorts"] and config.SHORTS_COUNT > 0:
+                st.do("the full video is GO, so the Shorts are made now")
+                ns.from_agent = "shorts"
+                continue
             if st.spent >= cap:
                 st.finish("cap", f"Stopped: spent ${st.spent:.2f}, the limit is ${cap:.2f}.", needs_from_verdict(v, verdict))
                 return st

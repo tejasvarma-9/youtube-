@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import difflib
 import json
+import subprocess
 import re
 from pathlib import Path
 
@@ -199,16 +200,19 @@ def caption_drift(cues: list[dict], heard: list[tuple[str, float, float]]) -> di
     a = [_word_key(w) for _, w in words]
     b = [_word_key(w) for w, _, _ in heard]
     hit = [None] * len(words)
+    sure = [None] * len(words)   # only words matched in runs of 2 or more: a lone match is often the wrong occurrence
     for blk in difflib.SequenceMatcher(None, a, b, autojunk=False).get_matching_blocks():
         for k in range(blk.size):
             hit[blk.a + k] = heard[blk.b + k][1]
+            if blk.size >= 2:
+                sure[blk.a + k] = heard[blk.b + k][1]
     first = {}
     for k, (ci, _) in enumerate(words):
         first.setdefault(ci, k)
     drifts = []
     for ci, k in first.items():
-        if hit[k] is not None:
-            drifts.append({"line": ci, "at": cues[ci]["start"], "drift": round(cues[ci]["start"] - hit[k], 2),
+        if sure[k] is not None:
+            drifts.append({"line": ci, "at": cues[ci]["start"], "drift": round(cues[ci]["start"] - sure[k], 2),
                            "text": cues[ci]["text"]})
     missing, k = [], 0
     while k < len(words):
@@ -225,6 +229,59 @@ def caption_drift(cues: list[dict], heard: list[tuple[str, float, float]]) -> di
     return {"drifts": drifts, "missing": missing, "matched": round(matched, 3)}
 
 
+ONSET_TOL_S = 0.25
+
+
+def snap_to_heard(video: Video) -> int:
+    """Word-by-word captions only: move each caption word that is clearly off (and not at a measured speech onset)
+    to the time the recognizer heard it in the finished video, by editing that word's time in timeline.json.
+    Returns how many words moved. The video must then be assembled again."""
+    try:
+        style = json.loads((video.dir / "style.json").read_text()) if (video.dir / "style.json").exists() else {}
+        heard = [tuple(w) for w in json.loads((video.dir / "qc" / "heard.json").read_text())["heard"]]
+    except (ValueError, KeyError, OSError):
+        return 0
+    if style.get("captions") != "word":
+        return 0
+    tl = video.read_json("timeline.json")
+    flat = [(s, k) for s in tl["sentences"] if s.get("words") and len(s["words"]) == len(s["text"].split())
+            for k in range(len(s["words"]))]
+    cues = _srt_cues((video.dir / "captions.srt").read_text())
+    if len(flat) != len(cues):
+        return 0
+    onsets = _speech_onsets(video)
+    moved = 0
+    for d in caption_drift(cues, heard)["drifts"]:
+        if abs(d["drift"]) <= DRIFT_WARN_S or any(abs(d["at"] - o) <= ONSET_TOL_S for o in onsets):
+            continue
+        s, k = flat[d["line"]]
+        new = round(d["at"] - d["drift"], 3)
+        lo = s["words"][k - 1][0] if k else s["start"] - 1.0
+        hi = s["words"][k + 1][0] if k + 1 < len(s["words"]) else s["end"] + 1.0
+        if lo < new < hi:
+            s["words"][k][0] = new
+            if k == 0:
+                s["start"] = min(s["start"], new)
+            moved += 1
+    if moved:
+        video.write_json("timeline.json", tl)
+    return moved
+
+
+def _speech_onsets(video: Video) -> list[float]:
+    """Times (seconds) where speech starts again after a pause, measured from the voiceover's loudness."""
+    wav = video.dir / "voiceover.wav"
+    ffmpeg = find_ffmpeg()[0]
+    if not wav.exists() or not ffmpeg:
+        return []
+    try:
+        out = subprocess.run([ffmpeg, "-hide_banner", "-i", str(wav), "-af", "silencedetect=n=-38dB:d=0.25", "-f", "null", "-"],
+                             capture_output=True, text=True, timeout=300).stderr
+    except Exception:
+        return []
+    return [float(x) for x in re.findall(r"silence_end: ([0-9.]+)", out)]
+
+
 def _captions(video: Video, failures: list, warnings: list, checks: dict) -> None:
     srt = video.dir / "captions.srt"
     if not srt.exists():
@@ -233,16 +290,40 @@ def _captions(video: Video, failures: list, warnings: list, checks: dict) -> Non
     if not align.available():
         warnings.append("Captions vs voice not checked: faster-whisper isn't installed (pip install -r requirements.txt).")
         return
-    log("  listening to the finished video to check the captions...")
-    try:
-        heard = align.transcribe(video.path("video.mp4"))
-    except Exception as e:
-        warnings.append(f"Captions vs voice not checked: the recognizer failed ({e}).")
-        return
+    cache = video.dir / "qc" / "heard.json"
+    vid = _video_id(video)
+    heard = None
+    if cache.exists():
+        try:
+            c = json.loads(cache.read_text())
+            heard = [tuple(w) for w in c["heard"]] if c.get("video") == vid else None
+        except (ValueError, KeyError):
+            heard = None
+    if heard is not None:
+        log("  captions: same video.mp4 as last time, reusing what was heard")
+    else:
+        log("  listening to the finished video to check the captions...")
+        try:
+            heard = align.transcribe(video.path("video.mp4"))
+        except Exception as e:
+            warnings.append(f"Captions vs voice not checked: the recognizer failed ({e}).")
+            return
+        video.path("qc", ".keep")
+        cache.write_text(json.dumps({"video": vid, "heard": [list(w) for w in heard]}))
     cues = _srt_cues(srt.read_text())
     r = caption_drift(cues, heard)
     checks["caption_words_heard"] = r["matched"]
     late = [d for d in r["drifts"] if abs(d["drift"]) > DRIFT_WARN_S]
+    # The recognizer's word times are least reliable right after a pause, which is exactly where sentences start.
+    # The audio itself says when speech starts again: a line that starts within ONSET_TOL_S of a measured speech
+    # onset is on time, whatever the recognizer heard, so it is not reported.
+    onsets = _speech_onsets(video)
+    if onsets:
+        kept = [d for d in late if not any(abs(d["at"] - o) <= ONSET_TOL_S for o in onsets)]
+        if len(kept) < len(late):
+            log(f"  captions: {len(late) - len(kept)} line(s) the recognizer placed off start exactly where the voice "
+                "starts after a pause; counted as on time")
+        late = kept
     checks["caption_lines_checked"] = len(r["drifts"])
     checks["caption_lines_off"] = len(late)
     worst = sorted(late, key=lambda d: -abs(d["drift"]))[:5]
@@ -304,10 +385,26 @@ def _review_with_claude(video: Video, failures: list, warnings: list, checks: di
                 TITLE=meta["title"], THUMBNAIL_TEXT=meta["thumbnail_text"],
                 DESCRIPTION_INTRO=meta.get("description_intro", ""),
                 FACTS=video.read_text("facts.txt"))
+    import hashlib
+    key = hashlib.sha1(text.encode())
+    for p in sheets + [video.dir / "thumbnail.png"]:
+        if p.exists():
+            key.update(p.read_bytes())
+    key = key.hexdigest()[:16]
+    cache = video.dir / "qc" / "claude_review.json"
     try:
-        answer = llm.ask(text, "qc", read_dir=str(video.dir))
-        video.path("raw", "qc_answer.md").write_text(answer)
-        data = extract_json(answer)
+        c = json.loads(cache.read_text()) if cache.exists() else {}
+    except ValueError:
+        c = {}
+    try:
+        if c.get("key") == key:
+            log("  pictures, thumbnail and claims unchanged since the last check: reusing that review")
+            data = c["data"]
+        else:
+            answer = llm.ask(text, "qc", read_dir=str(video.dir))
+            video.path("raw", "qc_answer.md").write_text(answer)
+            data = extract_json(answer)
+            cache.write_text(json.dumps({"key": key, "data": data}))
     except (StageError, ValueError) as e:
         warnings.append(f"Pictures and claims not checked by Claude ({str(e)[:200]}).")
         return

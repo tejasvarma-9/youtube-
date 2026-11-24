@@ -54,7 +54,11 @@ def run(video: Video, stub: bool = False, full: bool = False) -> None:
         brief = "\n\n".join(x for x in (f"Angle: {b['angle']}" if b.get("angle") else "", b.get("notes") or "") if x)
         text = fill(prompt("factcheck.md"), SCRIPT=script, FACTS=facts_text or "(none)", SOURCES=sources, SCOPE=scope,
                     BRIEF=brief or "(no brief was given)")
-        answer = llm.ask(text, "factcheck", web=True, stub=stub, context={"facts": facts_text})
+        from . import source_text
+        src = source_text.prepare(video) if not stub else None
+        text += source_text.context(video)
+        answer = llm.ask(text, "factcheck", web=True, stub=stub, context={"facts": facts_text},
+                         read_dir=str(src) if src else None)
         video.path("raw", "factcheck_answer.md").write_text(answer)
         result = extract_json(answer)
     else:
@@ -117,7 +121,10 @@ def _audit(video: Video, script: str, stub: bool, prev: dict | None = None) -> d
         log("  independent audit: re-checking the script against primary sources (no writer notes)...")
         scope = "Audit the whole script."
     text = fill(prompt("audit.md"), TOPIC=video.brief()["topic"], SCRIPT=script, SCOPE=scope)
-    answer = llm.ask(text, "audit", web=True, stub=stub)
+    from . import source_text
+    src = source_text.prepare(video) if not stub else None
+    text += source_text.context(video)
+    answer = llm.ask(text, "audit", web=True, stub=stub, read_dir=str(src) if src else None)
     video.path("raw", "audit_answer.md").write_text(answer)
     checks = extract_json(answer).get("checks", [])
     problems = [c for c in checks if str(c.get("verdict", "")).upper() in AUDIT_BAD]
@@ -176,6 +183,7 @@ def revise(video: Video, stub: bool = False, notes: str = "") -> None:
     files = ("script.txt", "facts.txt", "sources.txt")
     old = {n: video.read_text(n) for n in files}
     text = fill(prompt("revise.md"), VOICE=voice_profile(), TOPIC=b["topic"], ANGLE=b.get("angle") or "(none given)",
+                NOTES=b.get("notes") or "(none)",
                 PROBLEMS=problems, SCRIPT=old["script.txt"], FACTS=old["facts.txt"], SOURCES=old["sources.txt"])
     answer = llm.ask(text, "revise", web=True, stub=stub, context={**old, "problems": problems})
 

@@ -31,6 +31,38 @@ def run(video: Video, stub: bool = False) -> None:
     video.path("script.txt").write_text(parts["SCRIPT"].strip() + "\n")
     video.path("facts.txt").write_text(parts["FACTS"].strip() + "\n")
     video.path("sources.txt").write_text(parts["SOURCES"].strip() + "\n")
+    result = check(video)
+    if result["words"] < config.WORDS_MIN and not stub:
+        _extend(video, result["words"])
+
+
+def _extend(video: Video, words: int) -> None:
+    """A short script gets padded later, during fact-check fixes, and padding is what fails fact-checks. So it is
+    lengthened once now, with new sourced material, while nothing has been checked or recorded yet."""
+    b = video.brief()
+    log(f"  script is {words} words, under {config.WORDS_MIN}: asking for new sourced material once")
+    text = fill(prompt("extend.md"), VOICE=voice_profile(), TOPIC=b["topic"], ANGLE=b.get("angle") or "",
+                NOTES=b.get("notes") or "none", WORDS=str(words), MIN=str(config.WORDS_MIN), MAX=str(config.WORDS_MAX),
+                SCRIPT=video.read_text("script.txt"), FACTS=video.read_text("facts.txt"), SOURCES=video.read_text("sources.txt"))
+    try:
+        answer = llm.ask(text, "script", web=True)
+    except StageError as e:
+        log(f"  could not lengthen the script ({str(e)[:200]}); keeping it as it is")
+        return
+    video.path("raw", "extend_answer.md").write_text(answer)
+    parts = parse_sections(answer, ["SCRIPT", "FACTS", "SOURCES"])
+    new = (parts.get("SCRIPT") or "").strip()
+    old_lint = lint_script(video.read_text("script.txt"), video.read_text("facts.txt"))
+    new_lint = lint_script(new, (parts.get("FACTS") or "").strip()) if new else None
+    if not new or new_lint["words"] <= words or len(new_lint["errors"]) > len(old_lint["errors"]):
+        log("  the longer version was not better (shorter, or more rule errors); keeping the first one")
+        return
+    from .common import retire
+    for name in ("script.txt", "facts.txt", "sources.txt"):
+        retire(video.dir / name)
+    video.path("script.txt").write_text(new + "\n")
+    video.path("facts.txt").write_text(parts["FACTS"].strip() + "\n")
+    video.path("sources.txt").write_text(parts["SOURCES"].strip() + "\n")
     check(video)
 
 

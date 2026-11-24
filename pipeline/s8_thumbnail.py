@@ -132,6 +132,9 @@ def run(video: Video, stub: bool = False) -> None:
                 raise StageError("GOOGLE_API_KEY is empty. Put it in the .env file (see README), or run with --stub.")
             refs = [s5_images.upload_file(p) for p in s5_images.style_refs()]
             prompt = (f"{meta['thumbnail_subject']}\n\n{THUMB_STYLE}")
+            if meta.get("thumbnail_avoid"):
+                prompt += ("\n\nAn earlier version was rejected for this, so avoid it completely: " + meta["thumbnail_avoid"]
+                           + "\nNo words, letters, logos, badges or screens with writing anywhere in the picture.")
             data = s5_images.generate_sync(s5_images.build_request(prompt, refs))
             if not data:
                 raise StageError("Gemini returned no thumbnail image. Edit thumbnail_subject in metadata.json and re-run.")

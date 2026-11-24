@@ -78,6 +78,7 @@ Keep titles under 60 characters with the subject in the first 40. Thumbnail text
 Use these for the end-of-video pointer. Add each new video here once it is public.
 - Who Really Pays for Costco's Cheap Prices? (memberships, thin markups, warehouse retail)
 - The Netflix video: where your Netflix subscription money goes (streaming, content spending, subscriptions). Refer to it by that description, not by a quoted title.
+- Who Really Pays for Your Credit Card Rewards? (card rewards, who funds the perks you get)
 
 ## Visual style (images)
 

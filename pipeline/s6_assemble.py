@@ -12,6 +12,7 @@ from __future__ import annotations
 import concurrent.futures
 import functools
 import hashlib
+import json
 import os
 import re
 import shutil
@@ -117,7 +118,7 @@ def upscale(img: Path) -> Path:
     return out
 
 
-def build_clip(img, out, frames: int, motion: int) -> None:
+def build_clip(img, out, frames: int, motion: int, card=None, hud=None) -> None:
     """One shot as a slowly moving clip.
 
     Each frame is cut from the picture at a fractional position and resized once, so the move is
@@ -127,6 +128,7 @@ def build_clip(img, out, frames: int, motion: int) -> None:
 
     W, H = config.WIDTH, config.HEIGHT
     src = Image.open(img).convert("RGB")
+    overlay = _hud_overlay(hud) if hud else None
     sw, sh_ = src.size
     # Fill a 16:9 window from the middle of the picture.
     bw, bh = (sh_ * W / H, sh_) if sw / sh_ > W / H else (sw, sw * H / W)
@@ -141,7 +143,19 @@ def build_clip(img, out, frames: int, motion: int) -> None:
             zoom, px, py = move(k / max(frames - 1, 1))
             cw, ch = bw / zoom, bh / zoom
             x0, y0 = bx + (bw - cw) * px, by + (bh - ch) * py
-            frame = src.resize((W, H), Image.BICUBIC, box=(x0, y0, x0 + cw, y0 + ch))
+            if card and k < config.FPS * _card_anim_seconds():
+                from . import cards as _cards
+                frame = _cards.render_frame(card, k / (config.FPS * _card_anim_seconds())).convert("RGB")
+                if frame.size != (W, H):
+                    frame = frame.resize((W, H), Image.BICUBIC)
+            elif card:
+                frame = src if src.size == (W, H) else src.resize((W, H), Image.BICUBIC)
+            else:
+                frame = src.resize((W, H), Image.BICUBIC, box=(x0, y0, x0 + cw, y0 + ch))
+            if overlay is not None:
+                frame = frame.convert("RGBA")
+                frame.alpha_composite(overlay)
+                frame = frame.convert("RGB")
             proc.stdin.write(frame.tobytes())
         proc.stdin.close()
         err = proc.stderr.read().decode(errors="replace")
@@ -152,6 +166,34 @@ def build_clip(img, out, frames: int, motion: int) -> None:
     finally:
         if proc.poll() is None:
             proc.kill()
+
+
+def _card_anim_seconds() -> float:
+    from . import cards
+    return cards.ANIM_SECONDS
+
+
+def _hud_overlay(hud):
+    """A thin section tracker along the top: the parts of the video, the current one lit up."""
+    from PIL import Image, ImageDraw
+    from .s8_thumbnail import _font
+    W, H = config.WIDTH, config.HEIGHT
+    img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    titles, active = hud["titles"], hud["active"]
+    n = len(titles)
+    pad, gap, y0, hgt = 60, 14, 26, 46
+    seg = (W - 2 * pad - gap * (n - 1)) / n
+    f = _font(30)
+    for i, t in enumerate(titles):
+        x = pad + i * (seg + gap)
+        on = i == active
+        fill = (228, 87, 46, 235) if on else (20, 32, 43, 120) if i > active else (47, 109, 181, 200)
+        d.rounded_rectangle((x, y0, x + seg, y0 + hgt), 14, fill=fill)
+        tw = d.textlength(t, font=f)
+        if tw < seg - 16:
+            d.text((x + (seg - tw) / 2, y0 + 6), t, font=f, fill=(255, 255, 255, 255 if on else 190))
+    return img
 
 
 def end_card_image(path) -> None:
@@ -186,7 +228,7 @@ def build_end_card(out, seconds: float) -> None:
         "-crf", "18", "-pix_fmt", "yuv420p", str(out)])
 
 
-def caption_chunks(text: str, max_chars: int = 38) -> list[str]:
+def caption_chunks(text: str, max_chars: int = 38, tidy: bool = True) -> list[str]:
     words, chunks, cur = text.split(), [], ""
     for w in words:
         if cur and len(cur) + 1 + len(w) > max_chars:
@@ -197,16 +239,16 @@ def caption_chunks(text: str, max_chars: int = 38) -> list[str]:
     if cur:
         chunks.append(cur)
     # Don't leave a lonely last word on screen.
-    if len(chunks) > 1 and len(chunks[-1].split()) == 1:
+    if tidy and len(chunks) > 1 and len(chunks[-1].split()) == 1:
         last = chunks.pop()
         chunks[-1] += " " + last
     return chunks
 
 
-def write_srt(sentences: list[dict], path) -> None:
+def write_srt(sentences: list[dict], path, max_chars: int = 38, tidy: bool = True) -> None:
     n, lines = 0, []
     for s in sentences:
-        chunks = caption_chunks(s["text"])
+        chunks = caption_chunks(s["text"], max_chars, tidy)
         words = s.get("words")
         if words and len(words) == len(s["text"].split()):
             # Each caption line starts when its first word is said and stays up until the next line.
@@ -249,6 +291,23 @@ def run(video: Video, stub: bool = False, captions: bool = True) -> None:
             shot["start"] = 0.0 if n == 0 else starts[shot["sentences"][0]]
         for shot, nxt in zip(shots, shots[1:] + [{"start": tl["duration"]}]):
             shot["end"] = nxt["start"]
+    style = {}
+    try:
+        import json as _json
+        sj = video.dir / "style.json"
+        style = _json.loads(sj.read_text()) if sj.exists() else {}
+    except Exception:
+        style = {}
+    word_mode = style.get("captions") == "word"
+    secs = video.read_json("shots.json").get("sections") or []
+    sec_of = {}
+    if secs:
+        cur = 0
+        for s in shots:
+            while cur + 1 < len(secs) and s["id"] >= secs[cur + 1]["start_shot"]:
+                cur += 1
+            sec_of[s["id"]] = cur
+    titles = [x["title"] for x in secs]
     clips, todo = [], []
     sharp = f"up:{config.UPSCALE_MODEL}" if find_upscaler() else "plain"
     for idx, s in enumerate(shots):
@@ -257,19 +316,22 @@ def run(video: Video, stub: bool = False, captions: bool = True) -> None:
             raise StageError(f"Image for shot {s['id']} is missing. Run: python -m pipeline images {video.slug}")
         f0, f1 = round(s["start"] * config.FPS), round(s["end"] * config.FPS)
         frames = max(f1 - f0, 1)
-        key = hashlib.sha1(f"{CLIP_VERSION}|{sharp}|{img.stat().st_size}|{img.stat().st_mtime_ns}|{frames}|{idx % len(MOTIONS)}".encode()).hexdigest()[:10]
+        card = s.get("card") if style.get("interactive", True) else None
+        hud = {"titles": titles, "active": sec_of[s["id"]]} if titles and s["id"] in sec_of else None
+        extra = (f"|{json.dumps(card, sort_keys=True)}" if card else "") + (f"|hud{hud['active']}{'/'.join(titles)}" if hud else "")
+        key = hashlib.sha1(f"{CLIP_VERSION}|{sharp}|{img.stat().st_size}|{img.stat().st_mtime_ns}|{frames}|{idx % len(MOTIONS)}{extra}".encode()).hexdigest()[:10]
         clip = video.path("clips", f"shot_{s['id']:03d}_{key}.mp4")
         if not clip.exists():
             for old in clip.parent.glob(f"shot_{s['id']:03d}_*.mp4"):
                 old.unlink()
-            todo.append((img, clip, frames, idx))
+            todo.append((img, clip, frames, idx, card, hud))
         clips.append(clip)
 
     # Upscale one picture at a time (it uses the graphics chip), then build several clips at once:
     # each is mostly picture resizing plus its own ffmpeg process.
     if todo and sharp != "plain":
         log(f"    upscaling {len(todo)} pictures for a sharper video")
-        todo = [(upscale(img), clip, frames, idx) for img, clip, frames, idx in todo]
+        todo = [(img if card else upscale(img), clip, frames, idx, card, hud) for img, clip, frames, idx, card, hud in todo]
     if todo:
         log(f"    building {len(todo)} clips ({len(clips) - len(todo)} already made)")
     workers = max(1, min(4, (os.cpu_count() or 2) - 1))
@@ -296,11 +358,12 @@ def run(video: Video, stub: bool = False, captions: bool = True) -> None:
     concat = video.path("clips", "list.txt")
     concat.write_text("".join(f"file '{c.name}'\n" for c in clips))
     srt = video.path("captions.srt")
-    write_srt(tl["sentences"], srt)
+    write_srt(tl["sentences"], srt, max_chars=1 if word_mode else 38, tidy=not word_mode)
 
     cmd = [ffmpeg, "-y", "-v", "error", "-f", "concat", "-safe", "0", "-i", "clips/list.txt", "-i", "voiceover.wav"]
     if captions:
-        cmd += ["-vf", f"subtitles=captions.srt:force_style='{CAPTION_STYLE}'"]
+        cs = CAPTION_STYLE.replace("FontSize=15", "FontSize=24") if word_mode else CAPTION_STYLE
+        cmd += ["-vf", f"subtitles=captions.srt:force_style='{cs}'"]
     cmd += ["-map", "0:v", "-map", "1:a", "-c:v", "libx264", "-preset", "medium", "-crf", "20",
             "-pix_fmt", "yuv420p",
             # Level the voice to YouTube's playback loudness (about -14 LUFS), peaks under -1.5 dB.

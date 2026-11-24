@@ -48,6 +48,51 @@ def _visual_rules() -> str:
     return voice[start:end].strip() if start >= 0 else config.IMAGE_STYLE_SUFFIX
 
 
+CARD_MIN_GAP_S = 30.0   # no card this soon after another one or after the start
+CARD_EVERY_S = 40.0     # and at most one per this long on average
+
+
+def _attach_cards(video, shots: list[dict], result: dict) -> None:
+    """Keep the cards the model proposed only if they pass validation. A bad card just stays a normal picture."""
+    from . import cards
+    proposed = {int(s["id"]): s.get("card") for s in result.get("shots", []) if s.get("card")}
+    last_end, kept = -1e9, 0
+    total = shots[-1]["end"] if shots else 0
+    for s in shots:
+        card = proposed.get(s["id"])
+        if not card:
+            continue
+        why = cards.validate(card, s["text"])
+        if not why and s["start"] < CARD_MIN_GAP_S:
+            why = ["too early in the video"]
+        if not why and s["start"] - last_end < CARD_MIN_GAP_S:
+            why = ["too close to the previous card"]
+        if not why and kept >= max(1, int(total // CARD_EVERY_S)):
+            why = ["too many cards for this length"]
+        if why:
+            log(f"    card for shot {s['id']} dropped: {why[0]}")
+            continue
+        s["card"] = card
+        s["scene"] = f"CARD (drawn in code): {card['kind']} - {s['scene']}"
+        last_end, kept = s["end"], kept + 1
+    if kept:
+        log(f"  cards: {kept} animated cards")
+
+
+def _sections(raw, shots: list[dict]) -> list[dict]:
+    try:
+        ids = {s["id"] for s in shots}
+        secs = [{"title": str(x["title"]).strip().upper()[:24], "start_shot": int(x["start_shot"])} for x in (raw or [])]
+        secs = [x for x in secs if x["title"] and x["start_shot"] in ids]
+        secs.sort(key=lambda x: x["start_shot"])
+        if not secs or len(secs) < 3 or len(secs) > 6:
+            return []
+        secs[0]["start_shot"] = shots[0]["id"]
+        return secs
+    except Exception:
+        return []
+
+
 def run(video: Video, stub: bool = False) -> None:
     tl = video.read_json("timeline.json")
     shots = group(tl["sentences"], tl["duration"],
@@ -66,8 +111,18 @@ def run(video: Video, stub: bool = False) -> None:
     for s in shots:
         s["scene"] = scenes[s["id"]]
         s["prompt"] = f"{s['scene']}\n\n{config.IMAGE_STYLE_SUFFIX}"
+    _attach_cards(video, shots, result)
 
     lengths = [s["end"] - s["start"] for s in shots]
-    video.write_json("shots.json", {"character_description": result.get("character_description", ""), "shots": shots})
+    out = {"character_description": result.get("character_description", ""), "shots": shots}
+    sections = _sections(result.get("sections"), shots)
+    if sections:
+        out["sections"] = sections
+    video.write_json("shots.json", out)
+    if any(s.get("card") for s in shots) or sections:
+        style = video.dir / "style.json"
+        if not style.exists():
+            import json as _json
+            style.write_text(_json.dumps({"interactive": True, "captions": "word"}))
     est = len(shots) * config.PRICE_PER_IMAGE_BATCH
     log(f"  shots: {len(shots)} images, {min(lengths):.1f}s to {max(lengths):.1f}s each, about ${est:.2f} in batch images")

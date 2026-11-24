@@ -52,10 +52,10 @@ MAX_VOICE_RETRIES = 2
 MAX_VOICE_LINES_PER_RETRY = 3    # more flagged sentences than this is not a spot problem: report it, don't re-record
 MAX_IMAGE_RETRIES = 2
 MAX_IMAGES_PER_RETRY = 12        # likewise for pictures
-MAX_REPICKS = 2
+MAX_REPICKS = 1                  # Shorts are chosen again at most once per run (each round is several Claude calls)
 MAX_EXTRA_FIX_ROUNDS = 1         # a Short whose rewritten lines weren't confirmed gets one more rewrite round
 MAX_SHORT_REBUILDS = 1
-MAX_CLAIM_FIX_ROUNDS = 2         # the quality check often finds a new line to flag after each fix
+MAX_CLAIM_FIX_ROUNDS = 3         # the quality check often finds a new line to flag after each fix
 SCOUT_MIN, SCOUT_MAX = 3, 5
 SCOUT_MIN_SOURCES = 3
 WORDS_PER_MINUTE = 180           # the narrator's measured pace
@@ -133,11 +133,45 @@ def _qc_passed(v: Video) -> bool:
     return p.exists() and bool(json.loads(p.read_text()).get("passed"))
 
 
+# The files each agent's work depends on. If any of them changed since the agent last passed (a hand edit, an
+# autopilot fix), the agent runs again by itself: no more remembering which --from-agent to use.
+INPUTS = {
+    "script_factcheck": ("script.txt", "facts.txt", "sources.txt", "verified.txt"),
+    "voice_captions": ("script.txt",),
+    "images": ("shots.json",),
+    "packaging": ("script.txt", "timeline.json", "metadata_overrides.json"),
+    "shorts": ("script.txt",),
+}
+
+
+def inputs_sig(v: Video, name: str) -> str:
+    import hashlib
+    h = hashlib.sha1()
+    for f in INPUTS.get(name, ()):
+        p = v.dir / f
+        h.update(f.encode() + b"\0" + (p.read_bytes() if p.exists() else b"(none)") + b"\0")
+    return h.hexdigest()[:16]
+
+
+SHORTS_AFTER_GO = True
+
+
+def full_video_go(v: Video) -> bool:
+    verdict = _read_json(v.dir / "agents" / "VERDICT.json", {})
+    return (verdict.get("full_video") or {}).get("verdict") == "GO" and not verdict.get("stopped_at")
+
+
 def agent_done(v: Video, name: str) -> bool:
-    """A finished agent skips itself: its report passed and what it made is still there."""
+    """A finished agent skips itself: its report passed, what it made is still there, and its inputs are unchanged."""
     from . import cli
     r = read_report(v, name)
     if not r or not r.get("passed"):
+        return False
+    sig = r.get("details", {}).get("inputs")
+    if sig is None and name != "shorts":
+        return False  # a report from before inputs were recorded: check again (cheap: only what changed is redone)
+    if sig is not None and sig != inputs_sig(v, name):
+        log(f"[{name}] its input files changed since it last passed, so it runs again")
         return False
     if name == "script_factcheck":
         return cli._done(v, "factcheck")
@@ -636,6 +670,42 @@ def agent_packaging(v: Video, a, rep: Report, forced: bool) -> None:
     qc = s10_qc.run(v, stub=a.stub)
     rep.checked.append(f"full quality check: {'PASSED' if qc['passed'] else 'FAILED'} "
                        f"({len(qc['failures'])} problems, {len(qc['warnings'])} warnings)")
+    if any("caption lines are off" in f for f in qc["failures"]):
+        from . import align
+        from .cli import cmd_align
+        if align.available():
+            log("  captions drift from the voice: re-timing them from the voiceover and rebuilding, once")
+            try:
+                cmd_align(v)
+                s6_assemble.run(v, stub=a.stub, captions=not a.no_captions)
+                s10_qc.run(v, stub=a.stub)
+                n = s10_qc.snap_to_heard(v)
+                if n:
+                    log(f"  moved {n} caption word(s) to where they are heard in the video; rebuilding")
+                    s6_assemble.run(v, stub=a.stub, captions=not a.no_captions)
+                s7_metadata.run(v, stub=a.stub)
+                s8_thumbnail.run(v, stub=a.stub)
+                qc = s10_qc.run(v, stub=a.stub)
+                rep.fixed.append("captions re-timed from the voiceover and the video rebuilt")
+                rep.checked.append(f"quality check after re-timing: {'PASSED' if qc['passed'] else 'FAILED'}")
+            except StageError as e:
+                log(f"  re-timing did not work: {str(e)[:200]}")
+    art_problem = next((f[len("Thumbnail: "):] for f in qc["failures"] if f.startswith("Thumbnail: ")), None)
+    if art_problem and not a.stub:
+        log("  the thumbnail picture was rejected: drawing it again once, avoiding the problem")
+        meta = v.read_json("metadata.json")
+        meta["thumbnail_avoid"] = art_problem[:600]
+        if "label" in art_problem.lower():
+            meta["thumbnail_before"] = meta["thumbnail_after"] = ""
+        v.write_json("metadata.json", meta)
+        retire(v.dir / "thumbnail_art.png")
+        rep.spend(config.PRICE_PER_IMAGE_SYNC, "thumbnail art, drawn again")
+        try:
+            s8_thumbnail.run(v, stub=a.stub)
+            qc = s10_qc.run(v, stub=a.stub)
+            rep.fixed.append(f"thumbnail picture drawn again (it was rejected: {art_problem[:120]})")
+        except StageError as e:
+            log(f"  redrawing the thumbnail did not work: {str(e)[:200]}")
     for round_no in range(1, MAX_CLAIM_FIX_ROUNDS + 1):
         if qc["passed"]:
             break
@@ -648,6 +718,7 @@ def agent_packaging(v: Video, a, rep: Report, forced: bool) -> None:
             if field and fix and c.get("verdict") not in ("SUPPORTED", "OK") and meta.get(field) != fix:
                 changes.append((field, meta.get(field, ""), fix, c.get("note", "")))
                 meta[field] = fix.upper() if field.startswith("thumbnail") else fix
+                s7_metadata.update_override_if_set(v, field, meta[field])
         if not changes:
             break
         for name in ("metadata.json", "description.txt", "thumbnail.png"):
@@ -984,6 +1055,8 @@ def agent_overseer(v: Video, a, rep: Report, forced: bool) -> dict:
     tl = _read_json(d / "timeline.json", {})
     stub = a.stub or tl.get("voice") == "stub"
     plan = _read_json(d / "shorts" / "plan.json", {"shorts": []})
+    if getattr(a, "shorts_wait", False):
+        plan = {"shorts": []}  # Shorts wait for a GO full video; an old plan from an earlier script is not judged
     shorts_rep = (read_report(v, "shorts") or {}).get("details", {}).get("shorts", {})
     blocks = []
     for n, it in enumerate(plan.get("shorts", []), start=1):
@@ -999,7 +1072,11 @@ def agent_overseer(v: Video, a, rep: Report, forced: bool) -> dict:
                 FACTCHECK=json.dumps(fc_short, indent=1, ensure_ascii=False)[:15000], SCRIPT=_read(d / "script.txt"),
                 FACTS=_read(d / "facts.txt"), SOURCES=_read(d / "sources.txt"), REVIEW=_read(d / "review" / "REVIEW.md", 8000),
                 SHORTS="\n".join(blocks) or "(no Shorts)")
-    answer = llm.ask(text, "overseer", web=True, stub=a.stub, context={"shorts": list(range(1, len(plan.get("shorts", [])) + 1))})
+    from . import source_text
+    src = source_text.prepare(v) if not a.stub else None
+    text += source_text.context(v)
+    answer = llm.ask(text, "overseer", web=True, stub=a.stub, context={"shorts": list(range(1, len(plan.get("shorts", [])) + 1))},
+                     read_dir=str(src) if src else None)
     v.path("agents", "work", "overseer_answer.md").write_text(answer)
     try:
         data = extract_json(answer)
@@ -1058,7 +1135,18 @@ def enforce(v: Video, data: dict, plan: dict, shorts_rep: dict, stub: bool) -> d
         shorts.append({"short": n, "title": plan["shorts"][n - 1].get("title", ""), **sv})
     return {"slug": v.slug, "timestamp": _now(), "stub": stub, "full_video": full, "shorts": shorts,
             "rechecked_claims": claims, "summary": str(data.get("summary", "")), "error": data.get("error", ""),
-            "picture_fixes": _picture_fixes(v, data), "line_fixes": _line_fixes(v, data)}
+            "picture_fixes": _picture_fixes(v, data), "line_fixes": _line_fixes(v, data), "meta_fixes": _meta_fixes(data)}
+
+
+META_FIELDS = ("title", "thumbnail_text", "description_intro")
+
+
+def _meta_fixes(data: dict) -> list[dict]:
+    out = []
+    for x in data.get("meta_fixes", []) or []:
+        if isinstance(x, dict) and x.get("field") in META_FIELDS and str(x.get("value", "")).strip():
+            out.append({"field": x["field"], "value": str(x["value"]).strip()[:600], "why": str(x.get("why", ""))[:300]})
+    return out
 
 
 def _picture_fixes(v: Video, data: dict) -> list[dict]:
@@ -1127,8 +1215,27 @@ def write_stopped_verdict(v: Video, agent: str, rep: Report) -> None:
                "full_video": {"verdict": "NO-GO", "reasons": [reason], "fixes": [fix]},
                "shorts": [{"short": n, "title": "", "verdict": "NO-GO", "reasons": ["The full video is not finished."], "fixes": []}
                           for n in range(1, n_shorts + 1)],
-               "rechecked_claims": [], "summary": "", "error": ""}
+               "rechecked_claims": [], "summary": "", "error": "",
+               "line_fixes": _audit_line_fixes(v) if agent == "script_factcheck" else []}
     write_verdict(v, verdict)
+
+
+def _audit_line_fixes(v: Video) -> list[dict]:
+    """The independent audit's suggested rewrites, as exact script edits autopilot can apply (it checks each one first)."""
+    import re as _re
+    fc = _read_json(v.dir / "factcheck.json", {})
+    script = _read(v.dir / "script.txt", 10 ** 6)
+    sentences = _re.split(r"(?<=[.!?])\s+", script.replace("\n", " "))
+    out = []
+    for p in (fc.get("audit") or {}).get("problems", []):
+        quote, fix = str(p.get("quote", "")).strip(), str(p.get("fix", "")).strip()
+        if not quote or not fix or len(fix) > 600:
+            continue
+        hits = [s for s in sentences if quote in s or (len(s) > 20 and s in quote)]
+        if len(hits) != 1 or script.count(hits[0]) != 1 or hits[0] == fix:
+            continue
+        out.append({"file": "script.txt", "find": hits[0], "replace": fix, "why": str(p.get("note", ""))[:300]})
+    return out
 
 
 # --- the command ----------------------------------------------------------------------
@@ -1155,6 +1262,14 @@ def cmd_crew(a) -> Video | None:
             plan[name] = "skipped"
         else:
             plan[name], running = "waiting", True
+    # Shorts can only go up after the full video is public, and every change to the script throws them away. So they
+    # are made once the overseer has called the full video GO and nothing before them is running again.
+    shorts_wait = False
+    if plan.get("shorts") == "waiting" and a.from_agent != "shorts" and SHORTS_AFTER_GO:
+        earlier_ran = any(plan[n] != "skipped" for n in names[:names.index("shorts")])
+        if earlier_ran or not full_video_go(v):
+            plan["shorts"], shorts_wait = "skipped", True
+    a.shorts_wait = shorts_wait
     hook = dashboard.log_hook(v)
     common.LOG_HOOKS.append(hook)
     outcome = "stopped"
@@ -1168,7 +1283,8 @@ def cmd_crew(a) -> Video | None:
         for idx, name in enumerate(names):
             forced = first_forced is not None and idx >= first_forced
             if plan[name] == "skipped":
-                log(f"[{name}] already done, skipping")
+                log(f"[{name}] " + ("waits until the overseer calls the full video GO (Shorts go up only after it)"
+                                    if name == "shorts" and shorts_wait else "already done, skipping"))
                 continue
             log(f"\n=== agent: {name} ===")
             dashboard.agent_started(v, name)
@@ -1181,6 +1297,8 @@ def cmd_crew(a) -> Video | None:
                 import traceback
                 log(traceback.format_exc())
                 rep.fail(f"The {name} agent hit an unexpected error ({type(e).__name__}: {e}). This is a bug in the crew, not in your video.")
+            if rep.passed and name in INPUTS:
+                rep.details["inputs"] = inputs_sig(v, name)
             rep.write(v)
             dashboard.agent_finished(v, name, rep.passed)
             if not rep.passed and name in STOPPING:

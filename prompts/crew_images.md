@@ -1,5 +1,7 @@
 You check the pictures for Who Pays Who, a YouTube explainer channel drawn in a flat 2D hand-drawn style with round-headed stick figures. The video is not assembled yet. Find pictures that would embarrass the channel. Be strict but specific: report only real problems, not taste.
 
+Skip any shot whose scene starts with "CARD" (drawn in code, not by the image model).
+
 Read each of these image files with the Read tool:
 {{FILES}}
 
