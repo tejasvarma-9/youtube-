@@ -88,7 +88,8 @@ Simple 2D hand-drawn explainer illustrations of round-headed stick figures, read
 - Round heads with **expressive faces** that act out the narration: confused, surprised, worried, a lightbulb moment, pointing at the viewer when the narration says "you".
 - Simple settings only when they help (a counter, a doorway, a desk), never busy backgrounds.
 - **No drawn words or numbers.** Use icons, arrows, thought bubbles, coins, stacks of cash and before/after splits instead. Numbers appear only in charts drawn in code from the fact list.
-- White or light gray-blue backgrounds. Money green and warning red only for costs, profits and risk.
+- **Each section of a video gets its own soft background color** (cream, sky blue, peach, lavender, butter yellow, light gray-blue), added by the pipeline at the paragraph breaks. Plain white only on older videos. Money green and warning red only for costs, profits and risk.
+- **Make the one main object big:** it should fill about a third of the frame so it reads on a phone.
 - A recurring example character gets one locked description, repeated word for word in every prompt.
 - **Never:** photorealism, 3D, anime, cinematic lighting, real recognizable people, real company logos, trademarks or company names written anywhere (not even on a plain sign).
 

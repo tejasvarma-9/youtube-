@@ -41,6 +41,27 @@ def group(sentences: list[dict], duration: float, min_s: float = None,
     return out
 
 
+def assign_backgrounds(shots: list[dict], sentences: list[dict]) -> None:
+    """Give each shot a background color phrase, changing color at a paragraph break.
+
+    A color lasts at least SECTION_MIN_SECONDS, then the next shot that starts a new
+    paragraph begins the next color. Colors cycle through config.SECTION_BACKGROUNDS.
+    Set SECTION_MIN_SECONDS=0 to turn this off (pictures then keep the old white look).
+    """
+    if config.SECTION_MIN_SECONDS <= 0:
+        return
+    para = {s["i"]: s["paragraph"] for s in sentences}
+    colors, n, section_start, last_para = config.SECTION_BACKGROUNDS, 0, 0.0, None
+    for shot in shots:
+        first = shot["sentences"][0]
+        starts_paragraph = last_para is not None and para.get(first) != last_para
+        if shot is not shots[0] and starts_paragraph and shot["start"] - section_start >= config.SECTION_MIN_SECONDS:
+            n += 1
+            section_start = shot["start"]
+        shot["background"] = colors[n % len(colors)]
+        last_para = para.get(shot["sentences"][-1])
+
+
 def _visual_rules() -> str:
     voice = voice_profile()
     start = voice.find("## Visual style")
@@ -110,7 +131,9 @@ def run(video: Video, stub: bool = False) -> None:
         raise StageError(f"The shot list is missing scenes for shots {missing[:10]}. See raw/shots_answer.md and re-run.")
     for s in shots:
         s["scene"] = scenes[s["id"]]
-        s["prompt"] = f"{s['scene']}\n\n{config.IMAGE_STYLE_SUFFIX}"
+    assign_backgrounds(shots, tl["sentences"])
+    for s in shots:
+        s["prompt"] = f"{s['scene']}\n\n{config.style_suffix(s.get('background', ''))}"
     _attach_cards(video, shots, result)
 
     lengths = [s["end"] - s["start"] for s in shots]

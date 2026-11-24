@@ -6,6 +6,8 @@ Visual rules (from the voice profile):
 Recurring character: {{CHARACTER}}
 
 For each shot, describe one simple picture that shows the single idea of the narration, readable in one second:
+- Make the one main object large, filling about a third of the frame, so it reads on a phone.
+- Don't describe the background color: each section's color is added later.
 - One idea per picture: one or two figures and one object or symbol, with lots of empty space. No crowded scenes, shelves full of products or busy backgrounds.
 - Give every figure a clear facial expression and pose that acts out the line (confused with a question mark, surprised, worried, a lightbulb moment, pointing straight at the viewer when the line says "you").
 - No words, letters or numbers anywhere in the picture: no labels, signs, price tags, chart labels or company names. Show ideas with icons, arrows, thought bubbles, coins, stacks of cash, a shopping cart, a membership card with no writing, or a before/after split.
