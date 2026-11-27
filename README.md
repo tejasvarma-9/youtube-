@@ -395,6 +395,14 @@ Nothing changes unless you add `IMAGE_PROVIDER=openai` to `.env`. The OpenAI loo
 - Style frames in `assets/style-refs/` are not sent to OpenAI. Thumbnail art still uses Gemini, so you still need `GOOGLE_API_KEY`.
 - Go back any time by deleting the `IMAGE_PROVIDER` line.
 
+## Thumbnail look: flat (optional, off by default)
+
+The default thumbnail is dark navy with a glossy before/after split. `THUMB_LOOK=flat` in `.env` switches to a lighter look: pale background, thick black outlines, one or two big characters with blue or red faces, a black headline with the last line in red, and a small logo bottom right. The art is drawn into its own file, `thumbnail_art_flat.png`, so the classic art is kept and `THUMB_LOOK=classic` goes back.
+
+- With `IMAGE_PROVIDER=openai` the art is drawn by OpenAI at `THUMB_OPENAI_QUALITY` (default `medium`, about 2 cents for the one picture). Otherwise Gemini draws it.
+- It reads `thumbnail_subject_flat` in `metadata.json` (one scene, not a split). If that is missing it reuses `thumbnail_subject` and asks for one scene.
+- Run `python -m pipeline thumbnail <video>`, then `qc` and `review`.
+
 ## Test another image provider (Gemini vs OpenAI)
 
 Only if you want to see whether a cheaper image model can match your look. It spends about 12 cents and never touches a video's real pictures.

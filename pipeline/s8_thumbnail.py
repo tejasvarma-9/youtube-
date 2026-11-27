@@ -21,6 +21,15 @@ THUMB_STYLE = (
     "Use only generic stand-ins: no real brands, logos, posters, show titles or real people. "
     "Keep the top 28 percent of the frame plain dark navy. 16:9. No text, no letters, no numbers."
 )
+THUMB_STYLE_FLAT = (
+    "Style: flat 2D cartoon stick-figure illustration on a clean very light background (white or very pale gray-blue), "
+    "thick black outlines of even weight, flat saturated colors with no gradients, no glow, no 3D shading, no photorealism. "
+    "One single scene, not a split screen. One or two big characters with round heads, faces tinted blue or red, with a clear "
+    "strong emotion, drawn large in the lower 70 percent of the frame, plus one or two simple props that tell the story. "
+    "Keep the top 28 percent of the frame plain light background. Generic stand-ins only: no real brands, logos or real people. "
+    "16:9. No text, no letters, no numbers."
+)
+RED = (232, 33, 39)
 INK = (10, 10, 10)
 NAVY = (12, 22, 48)
 WHITE = (255, 255, 255)
@@ -77,6 +86,49 @@ def _label(d, text: str, cx: int, cy: int) -> None:
     d.text((cx - tw // 2, cy - th // 2 - box[1]), text, font=font, fill=INK)
 
 
+def compose_flat(art_path, headline: str, out_path) -> None:
+    """Flat look: the art fills the frame, a band at the top (colored like the art's own top edge) carries a big
+    black headline whose last line, or last word on a one-line headline, is red. Small logo bottom right."""
+    art = Image.open(art_path).convert("RGB")
+    scale = max(W / art.width, H / art.height)
+    art = art.resize((round(art.width * scale), round(art.height * scale)), Image.LANCZOS)
+    left, top = (art.width - W) // 2, (art.height - H) // 2
+    img = art.crop((left, top, left + W, top + H))
+    base = img.crop((0, 0, W, 10)).resize((1, 1), Image.BOX).getpixel((0, 0))
+    fade = Image.new("L", (1, H))
+    for y in range(H):
+        fade.putpixel((0, y), max(0, min(255, round(255 * (1 - y / (H * 0.36))))))
+    img = Image.composite(Image.new("RGB", (W, H), base), img, fade.resize((W, H)))
+    d = ImageDraw.Draw(img)
+    max_w = W - 90
+    for size in range(150, 60, -6):
+        font = _font(size)
+        lines = _wrap(d, headline, font, max_w)
+        if len(lines) <= 2 and all(d.textlength(ln, font=font) <= max_w for ln in lines):
+            break
+    else:
+        lines = _wrap(d, headline, font, max_w)[:2]
+    y = 20
+    for i, line in enumerate(lines):
+        bbox = d.textbbox((0, 0), line, font=font)
+        lw = bbox[2] - bbox[0]
+        x = (W - lw) // 2
+        last = i == len(lines) - 1
+        if last and len(lines) == 1 and " " in line:
+            head, tail = line.rsplit(" ", 1)
+            d.text((x, y - bbox[1]), head + " ", font=font, fill=INK)
+            d.text((x + d.textlength(head + " ", font=font), y - bbox[1]), tail, font=font, fill=RED)
+        else:
+            d.text((x, y - bbox[1]), line, font=font, fill=RED if last else INK)
+        y += (bbox[3] - bbox[1]) + round(size * 0.14)
+    if config.LOGO.exists():
+        logo = Image.open(config.LOGO).convert("RGBA").resize((76, 76), Image.LANCZOS)
+        mask = Image.new("L", logo.size, 0)
+        ImageDraw.Draw(mask).ellipse([0, 0, 75, 75], fill=255)
+        img.paste(logo, (W - 76 - 22, H - 76 - 22), mask)
+    img.save(out_path)
+
+
 def compose(art_path, headline: str, out_path, before: str = "", after: str = "") -> None:
     """Art fills the frame; a dark fade at the top carries a big outlined headline."""
     art = Image.open(art_path).convert("RGB")
@@ -121,8 +173,36 @@ def compose(art_path, headline: str, out_path, before: str = "", after: str = ""
     img.save(out_path)
 
 
+def _flat_art(video: Video, meta: dict, art, stub: bool) -> None:
+    """Draw the flat-look art (its own file, so the classic art is kept and the look can be switched back)."""
+    subject = meta.get("thumbnail_subject_flat") or (
+        meta["thumbnail_subject"] + " Make it ONE single scene, not a split screen; keep the characters and props but one composition.")
+    if stub:
+        stubs.image_card(subject, art, label="thumbnail (flat)")
+        return
+    prompt = f"{subject}\n\n{THUMB_STYLE_FLAT}"
+    if config.IMAGE_PROVIDER == "openai":
+        if not config.OPENAI_API_KEY:
+            raise StageError("IMAGE_PROVIDER=openai but OPENAI_API_KEY is empty in .env.")
+        art.write_bytes(s5_images.openai_generate(prompt, config.OPENAI_API_KEY, quality=config.THUMB_OPENAI_QUALITY))
+        return
+    if not config.GOOGLE_API_KEY:
+        raise StageError("GOOGLE_API_KEY is empty. Put it in the .env file (see README), or run with --stub.")
+    data = s5_images.generate_sync(s5_images.build_request(prompt, []))
+    if not data:
+        raise StageError("Gemini returned no thumbnail image. Edit thumbnail_subject_flat in metadata.json and re-run.")
+    art.write_bytes(data)
+
+
 def run(video: Video, stub: bool = False) -> None:
     meta = video.read_json("metadata.json")
+    if config.THUMB_LOOK == "flat":
+        art = video.path("thumbnail_art_flat.png")
+        if not art.exists():
+            _flat_art(video, meta, art, stub)
+        compose_flat(art, meta["thumbnail_text"], video.path("thumbnail.png"))
+        log("  thumbnail.png written, flat look (delete thumbnail_art_flat.png to redraw the art; THUMB_LOOK=classic goes back)")
+        return
     art = video.path("thumbnail_art.png")
     if not art.exists():
         if stub:

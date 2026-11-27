@@ -1024,3 +1024,66 @@ class ImageProviderTests(unittest.TestCase):
                 s5_images.run(Video("vid"))
         self.assertIn("GOOGLE_API_KEY", str(cm.exception))
         post.assert_not_called()
+
+
+class FlatThumbnailTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+
+    def _art(self, color=(170, 215, 245)):
+        from PIL import Image
+        p = self.tmp / "art.png"
+        Image.new("RGB", (1536, 864), color).save(p)
+        return p
+
+    def test_default_look_is_classic(self):
+        self.assertEqual(config.THUMB_LOOK, "classic")
+
+    def test_flat_compose_size_and_red_headline_and_top_band(self):
+        from PIL import Image
+        from pipeline import s8_thumbnail as t
+        out = self.tmp / "t.png"
+        t.compose_flat(self._art(), "A PRICE FALL MOVES NO CASH", out)
+        img = Image.open(out).convert("RGB")
+        self.assertEqual(img.size, (1280, 720))
+        px = [img.getpixel((x, y)) for x in range(0, 1280, 4) for y in range(0, 300, 4)]
+        self.assertTrue(any(r > 200 and g < 80 and b < 80 for r, g, b in px), "red headline pixels expected")
+        self.assertTrue(any(r < 40 and g < 40 and b < 40 for r, g, b in px), "black headline pixels expected")
+        self.assertEqual(img.getpixel((10, 700)), (170, 215, 245))  # art untouched away from the headline
+
+    def test_one_line_headline_makes_only_last_word_red(self):
+        from PIL import Image
+        from pipeline import s8_thumbnail as t
+        out = self.tmp / "t1.png"
+        t.compose_flat(self._art(), "WHO PAYS", out)
+        self.assertEqual(Image.open(out).size, (1280, 720))
+
+    def test_stage_flat_uses_its_own_art_file_and_keeps_classic_art(self):
+        from pipeline import s8_thumbnail as t
+        from pipeline.common import Video
+        (self.tmp / "out" / "vid").mkdir(parents=True)
+        (self.tmp / "out" / "vid" / "metadata.json").write_text(json.dumps({
+            "thumbnail_text": "TEST TEXT", "thumbnail_subject": "a scene", "thumbnail_subject_flat": "one flat scene"}))
+        (self.tmp / "out" / "vid" / "thumbnail_art.png").write_bytes(b"classic-art")
+        with mock.patch.object(config, "OUT", self.tmp / "out"), mock.patch.object(config, "THUMB_LOOK", "flat"):
+            t.run(Video("vid"), stub=True)
+        d = self.tmp / "out" / "vid"
+        self.assertTrue((d / "thumbnail_art_flat.png").exists())
+        self.assertTrue((d / "thumbnail.png").exists())
+        self.assertEqual((d / "thumbnail_art.png").read_bytes(), b"classic-art")
+
+    def test_flat_art_uses_openai_when_selected(self):
+        from pipeline import s8_thumbnail as t
+        from pipeline.common import Video
+        (self.tmp / "out" / "vid").mkdir(parents=True)
+        meta = {"thumbnail_text": "X", "thumbnail_subject": "s", "thumbnail_subject_flat": "flat subject"}
+        with mock.patch.object(config, "OUT", self.tmp / "out"), mock.patch.object(config, "IMAGE_PROVIDER", "openai"), \
+             mock.patch.object(config, "OPENAI_API_KEY", "k"), \
+             mock.patch("pipeline.s8_thumbnail.s5_images.openai_generate", return_value=b"png") as gen:
+            art = self.tmp / "a.png"
+            t._flat_art(Video("vid"), meta, art, stub=False)
+        self.assertEqual(art.read_bytes(), b"png")
+        self.assertIn("flat subject", gen.call_args.args[0])
+        self.assertIn("No text", gen.call_args.args[0])
+        self.assertEqual(gen.call_args.kwargs["quality"], "medium")

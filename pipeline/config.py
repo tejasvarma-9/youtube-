@@ -109,6 +109,11 @@ OPENAI_IMAGE_QUALITY = env("OPENAI_IMAGE_QUALITY", "low")  # low, medium or high
 OPENAI_IMAGE_SIZE = env("OPENAI_IMAGE_SIZE", "1536x864")  # 16:9, both edges a multiple of 16
 # Estimated USD per 1536x864 picture, from public price trackers checked 2026-11-27 (about 1 megapixel
 # prices plus 30% for the larger size). Not OpenAI's own table: your OpenAI usage page has the real bill.
+# Thumbnail look: "classic" (dark navy, glossy before/after split; the default) or "flat" (light background,
+# thick outlines, big colored-face characters, black headline with the last words in red; inspired by the
+# light-background stick-figure explainer channels). "flat" draws its art with OpenAI when IMAGE_PROVIDER=openai.
+THUMB_LOOK = env("THUMB_LOOK", "classic").lower()
+THUMB_OPENAI_QUALITY = env("THUMB_OPENAI_QUALITY", "medium")  # one picture per video, so worth a better one
 PRICE_PER_IMAGE_OPENAI = {"low": 0.008, "medium": 0.0176, "high": 0.07}
 
 
