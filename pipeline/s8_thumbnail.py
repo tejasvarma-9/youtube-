@@ -21,14 +21,19 @@ THUMB_STYLE = (
     "Use only generic stand-ins: no real brands, logos, posters, show titles or real people. "
     "Keep the top 28 percent of the frame plain dark navy. 16:9. No text, no letters, no numbers."
 )
-THUMB_STYLE_FLAT = (
-    "Style: flat 2D cartoon stick-figure illustration on a clean very light background (white or very pale gray-blue), "
-    "thick black outlines of even weight, flat saturated colors with no gradients, no glow, no 3D shading, no photorealism. "
-    "One single scene, not a split screen. One or two big characters with round heads, faces tinted blue or red, with a clear "
-    "strong emotion, drawn large in the lower 70 percent of the frame, plus one or two simple props that tell the story. "
-    "Keep the top 28 percent of the frame plain light background. Generic stand-ins only: no real brands, logos or real people. "
-    "16:9. No text, no letters, no numbers."
+THUMB_FLAT_EXTRA = (
+    "This is a YouTube thumbnail: draw the characters and props big and bold, fully inside the frame with a clear margin "
+    "on every side, nothing cut off, nothing touching the edges. One single scene, not a split screen. The characters have "
+    "plain white round heads exactly like the rest of the video, with a clear strong emotion. Plain solid background only. "
+    "No text, no letters, no numbers."
 )
+
+
+def flat_style() -> str:
+    """The flat thumbnail art uses the SAME style text as the video's own pictures, so the stickmen match the video."""
+    return config.style_suffix("a solid soft lavender background") + " " + THUMB_FLAT_EXTRA
+
+
 RED = (232, 33, 39)
 INK = (10, 10, 10)
 NAVY = (12, 22, 48)
@@ -86,70 +91,45 @@ def _label(d, text: str, cx: int, cy: int) -> None:
     d.text((cx - tw // 2, cy - th // 2 - box[1]), text, font=font, fill=INK)
 
 
-def _sticker(art: Image.Image, size: tuple[int, int], angle: float) -> Image.Image:
-    """The art as a tilted comic card: rounded corners, thick black border, hard offset shadow. Returns RGBA."""
-    cw, ch = size
-    # the art leaves a lot of plain space at the top, so crop it to bring the characters closer
-    art = art.crop((0, round(art.height * 0.12), art.width, art.height))
-    k = max(cw / art.width, ch / art.height)
-    art = art.resize((round(art.width * k), round(art.height * k)), Image.LANCZOS)
-    l, t = (art.width - cw) // 2, art.height - ch  # anchor bottom so feet are not cut off first
-    card = art.crop((l, t, l + cw, t + ch)).convert("RGBA")
-    mask = Image.new("L", (cw, ch), 0)
-    ImageDraw.Draw(mask).rounded_rectangle([0, 0, cw - 1, ch - 1], radius=34, fill=255)
-    bw = 12
-    frame = Image.new("RGBA", (cw + 2 * bw, ch + 2 * bw), (0, 0, 0, 0))
-    ImageDraw.Draw(frame).rounded_rectangle([0, 0, frame.width - 1, frame.height - 1], radius=34 + bw, fill=INK + (255,))
-    frame.paste(card, (bw, bw), mask)
-    pad = 40
-    out = Image.new("RGBA", (frame.width + 2 * pad, frame.height + 2 * pad), (0, 0, 0, 0))
-    shadow = Image.new("RGBA", frame.size, (0, 0, 0, 0))
-    ImageDraw.Draw(shadow).rounded_rectangle([0, 0, frame.width - 1, frame.height - 1], radius=34 + bw, fill=(0, 0, 0, 255))
-    out.alpha_composite(shadow, (pad + 16, pad + 16))
-    out.alpha_composite(frame, (pad, pad))
-    return out.rotate(angle, resample=Image.BICUBIC, expand=True)
+def _content_box(art: Image.Image, bg) -> tuple[int, int, int, int]:
+    """Bounding box of everything in the art that is not the plain background colour."""
+    from PIL import ImageChops
+    diff = ImageChops.difference(art, Image.new("RGB", art.size, bg)).convert("L").point(lambda v: 255 if v > 38 else 0)
+    return diff.getbbox() or (0, 0, art.width, art.height)
 
 
 def compose_flat(art_path, headline: str, out_path) -> None:
-    """Flat look, poster layout: a yellow halftone background, the headline stacked big on the left (last line white
-    on a red block), the art as a tilted sticker card on the right, small logo bottom right. Text and art never
-    share pixels, so nothing can overlap whatever the model drew."""
+    """Flat look: the canvas is the art's own plain background colour. The headline is drawn first (big black, last
+    line red, white edge). The art is then cropped to where its drawing actually is, scaled to fit the space below
+    the headline and pasted on, so text and art can never overlap whatever the model drew. Logo bottom right."""
     art = Image.open(art_path).convert("RGB")
-    img = Image.new("RGB", (W, H), YELLOW)
+    bg = art.crop((0, 0, art.width, 14)).resize((1, 1), Image.BOX).getpixel((0, 0))
+    img = Image.new("RGB", (W, H), bg)
     d = ImageDraw.Draw(img)
-    dot = (250, 196, 0)
-    for gy in range(0, H + 30, 30):
-        for gx in range(0, W + 30, 30):
-            r = max(0, 9 - (gx + gy) // 150)
-            if r:
-                ox = 15 if (gy // 30) % 2 else 0
-                d.ellipse([gx + ox - r, gy - r, gx + ox + r, gy + r], fill=dot)
-    # headline column
-    col_w, top, bottom = 530, 50, H - 60
-    words = headline.split()
-    for size in range(170, 60, -6):
+    max_w = W - 80
+    for size in range(150, 70, -6):
         font = _font(size)
-        lines = _wrap(d, headline, font, col_w)
-        gap = round(size * 0.12)
-        hs = [d.textbbox((0, 0), ln, font=font) for ln in lines]
-        total = sum(b[3] - b[1] for b in hs) + gap * (len(lines) - 1)
-        if len(lines) <= 4 and total <= bottom - top and all(d.textlength(ln, font=font) <= col_w for ln in lines):
+        lines = _balanced(d, headline, font, max_w) or _wrap(d, headline, font, max_w)
+        if len(lines) <= 2 and all(d.textlength(ln, font=font) <= max_w for ln in lines):
             break
-    y = top + (bottom - top - total) // 2
-    for i, (line, b) in enumerate(zip(lines, hs)):
-        lh = b[3] - b[1]
-        lw = d.textlength(line, font=font)
-        if i == len(lines) - 1 and len(lines) > 1:
-            d.rounded_rectangle([40 - 14, y - 12, 40 + lw + 14, y + lh + 14], radius=14, fill=RED, outline=INK, width=5)
-            d.text((40, y - b[1]), line, font=font, fill=WHITE)
-        else:
-            for dx, dy in ((4, 4),):
-                d.text((40 + dx, y - b[1] + dy), line, font=font, fill=WHITE)
-            d.text((40, y - b[1]), line, font=font, fill=INK)
-        y += lh + gap + 6
-    # art card
-    card = _sticker(art, (590, 335), -4)
-    img.paste(card, (W - card.width + 12, (H - card.height) // 2 + 10), card)
+    else:
+        lines = _wrap(d, headline, font, max_w)[:2]
+    y = 22
+    for i, line in enumerate(lines):
+        bb = d.textbbox((0, 0), line, font=font)
+        x = (W - (bb[2] - bb[0])) // 2 - bb[0]
+        last = i == len(lines) - 1
+        d.text((x, y - bb[1]), line, font=font, fill=RED if last else INK, stroke_width=7, stroke_fill=WHITE)
+        y += (bb[3] - bb[1]) + round(size * 0.16)
+    # the art, cropped to its drawing, fitted into the space below the headline
+    l, t, r, b = _content_box(art, bg)
+    m = 24
+    art = art.crop((max(0, l - m), max(0, t - m), min(art.width, r + m), min(art.height, b + m)))
+    top = y + 4
+    avail_w, avail_h = W - 40, H - top - 14
+    k = min(avail_w / art.width, avail_h / art.height)
+    art = art.resize((max(1, round(art.width * k)), max(1, round(art.height * k))), Image.LANCZOS)
+    img.paste(art, ((W - art.width) // 2, H - 14 - art.height))
     if config.LOGO.exists():
         logo = Image.open(config.LOGO).convert("RGBA").resize((76, 76), Image.LANCZOS)
         mask = Image.new("L", logo.size, 0)
@@ -210,7 +190,7 @@ def _flat_art(video: Video, meta: dict, art, stub: bool) -> None:
     if stub:
         stubs.image_card(subject, art, label="thumbnail (flat)")
         return
-    prompt = f"{subject}\n\n{THUMB_STYLE_FLAT}"
+    prompt = f"{subject}\n\n{flat_style()}"
     if config.IMAGE_PROVIDER == "openai":
         if not config.OPENAI_API_KEY:
             raise StageError("IMAGE_PROVIDER=openai but OPENAI_API_KEY is empty in .env.")

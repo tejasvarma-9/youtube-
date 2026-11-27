@@ -397,7 +397,7 @@ Nothing changes unless you add `IMAGE_PROVIDER=openai` to `.env`. The OpenAI loo
 
 ## Thumbnail look: flat (optional, off by default)
 
-The default thumbnail is dark navy with a glossy before/after split. `THUMB_LOOK=flat` in `.env` switches to a lighter look: pale background, thick black outlines, one or two big characters with blue or red faces, a yellow halftone poster: big stacked headline on the left (last line white on a red block), the art as a tilted sticker card on the right, small logo bottom right. Text and art never share pixels, so they cannot overlap. The art is drawn into its own file, `thumbnail_art_flat.png`, so the classic art is kept and `THUMB_LOOK=classic` goes back.
+The default thumbnail is dark navy with a glossy before/after split. `THUMB_LOOK=flat` in `.env` switches to a lighter look: pale background, thick black outlines, one or two big characters with blue or red faces, the same stickmen and pastel background as the video (the art is drawn with the video's own style text), a big black headline on top with the last line in red, the drawing cropped and fitted under it, small logo bottom right. The headline is placed first and the art fitted into the space left, so they cannot overlap. The art is drawn into its own file, `thumbnail_art_flat.png`, so the classic art is kept and `THUMB_LOOK=classic` goes back.
 
 - With `IMAGE_PROVIDER=openai` the art is drawn by OpenAI at `THUMB_OPENAI_QUALITY` (default `medium`, about 2 cents for the one picture). Otherwise Gemini draws it.
 - It reads `thumbnail_subject_flat` in `metadata.json` (one scene, not a split). If that is missing it reuses `thumbnail_subject` and asks for one scene.

@@ -1040,18 +1040,23 @@ class FlatThumbnailTests(unittest.TestCase):
     def test_default_look_is_classic(self):
         self.assertEqual(config.THUMB_LOOK, "classic")
 
-    def test_flat_compose_poster_layout_has_red_block_and_art_never_under_text(self):
-        from PIL import Image
+    def test_flat_compose_headline_on_art_background_and_drawing_below_it(self):
+        from PIL import Image, ImageDraw
         from pipeline import s8_thumbnail as t
+        art = Image.new("RGB", (1536, 864), (170, 215, 245))
+        ImageDraw.Draw(art).rectangle([100, 50, 1400, 800], fill=(20, 160, 20))  # a drawing that fills the frame
+        ap = self.tmp / "full.png"
+        art.save(ap)
         out = self.tmp / "t.png"
-        t.compose_flat(self._art(), "A PRICE FALL MOVES NO CASH", out)
+        t.compose_flat(ap, "A PRICE FALL MOVES NO CASH", out)
         img = Image.open(out).convert("RGB")
         self.assertEqual(img.size, (1280, 720))
-        px = [img.getpixel((x, y)) for x in range(0, 600, 4) for y in range(0, 720, 4)]
-        self.assertTrue(any(r > 200 and g < 80 and b < 80 for r, g, b in px), "red block expected in the text column")
-        self.assertTrue(any(r < 40 and g < 40 and b < 40 for r, g, b in px), "black headline pixels expected")
-        # the art colour (170,215,245) must not appear in the text column: no overlap possible
-        self.assertFalse(any(abs(r - 170) < 6 and abs(g - 215) < 6 and abs(b - 245) < 6 for r, g, b in px))
+        self.assertEqual(img.getpixel((5, 5)), (170, 215, 245))  # canvas takes the art's background colour
+        top = [img.getpixel((x, y)) for x in range(0, 1280, 4) for y in range(0, 230, 4)]
+        self.assertTrue(any(r > 200 and g < 80 and b < 80 for r, g, b in top), "red headline pixels expected")
+        self.assertFalse(any(g > 140 and r < 60 for r, g, b in top), "the drawing must not reach into the headline rows")
+        low = [img.getpixel((x, y)) for x in range(0, 1280, 4) for y in range(380, 700, 4)]
+        self.assertTrue(any(g > 140 and r < 60 for r, g, b in low), "the drawing is shown below the headline")
 
     def test_one_line_headline_makes_only_last_word_red(self):
         from PIL import Image
