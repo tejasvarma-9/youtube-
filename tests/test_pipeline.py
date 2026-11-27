@@ -1040,17 +1040,18 @@ class FlatThumbnailTests(unittest.TestCase):
     def test_default_look_is_classic(self):
         self.assertEqual(config.THUMB_LOOK, "classic")
 
-    def test_flat_compose_size_and_red_headline_and_top_band(self):
+    def test_flat_compose_poster_layout_has_red_block_and_art_never_under_text(self):
         from PIL import Image
         from pipeline import s8_thumbnail as t
         out = self.tmp / "t.png"
         t.compose_flat(self._art(), "A PRICE FALL MOVES NO CASH", out)
         img = Image.open(out).convert("RGB")
         self.assertEqual(img.size, (1280, 720))
-        px = [img.getpixel((x, y)) for x in range(0, 1280, 4) for y in range(0, 300, 4)]
-        self.assertTrue(any(r > 200 and g < 80 and b < 80 for r, g, b in px), "red headline pixels expected")
+        px = [img.getpixel((x, y)) for x in range(0, 600, 4) for y in range(0, 720, 4)]
+        self.assertTrue(any(r > 200 and g < 80 and b < 80 for r, g, b in px), "red block expected in the text column")
         self.assertTrue(any(r < 40 and g < 40 and b < 40 for r, g, b in px), "black headline pixels expected")
-        self.assertEqual(img.getpixel((10, 700)), (170, 215, 245))  # art untouched away from the headline
+        # the art colour (170,215,245) must not appear in the text column: no overlap possible
+        self.assertFalse(any(abs(r - 170) < 6 and abs(g - 215) < 6 and abs(b - 245) < 6 for r, g, b in px))
 
     def test_one_line_headline_makes_only_last_word_red(self):
         from PIL import Image
