@@ -880,3 +880,81 @@ class VoiceSpeedTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ImageCompareTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.out = self.tmp / "out"
+        (self.out / "vid" / "images").mkdir(parents=True)
+        shots = [{"id": i, "scene": f"scene {i}", "background": "plain cream"} for i in range(1, 21)]
+        shots[3]["card"] = {"kind": "x"}
+        (self.out / "vid" / "shots.json").write_text(json.dumps({"shots": shots}))
+        for i in (1, 6, 11, 16, 20):
+            (self.out / "vid" / "images" / f"shot_{i:03d}.png").write_bytes(b"gemini")
+        p = mock.patch.object(config, "OUT", self.out)
+        p.start()
+        self.addCleanup(p.stop)
+
+    def _ok(self):
+        res = mock.Mock(status_code=200)
+        res.json.return_value = {"data": [{"b64_json": base64.b64encode(b"openai").decode()}]}
+        return res
+
+    def test_pick_shots_spreads_evenly_and_skips_cards(self):
+        from pipeline.image_compare import pick_shots
+        shots = [{"id": i, "scene": "s"} for i in range(1, 21)]
+        shots[3]["card"] = {"kind": "x"}
+        picked = pick_shots(shots, 6)
+        self.assertEqual(len(picked), 6)
+        self.assertEqual(picked[0]["id"], 1)
+        self.assertEqual(picked[-1]["id"], 20)
+        self.assertNotIn(4, [s["id"] for s in picked])
+
+    def test_estimate_and_request_body(self):
+        from pipeline import image_compare as ic
+        self.assertAlmostEqual(ic.estimate(6, ["low", "medium"]), 0.1152, places=4)
+        body = ic.request_body("p", "low")
+        self.assertEqual((body["size"], body["quality"], body["n"]), (ic.SIZE, "low", 1))
+        self.assertEqual(int(ic.SIZE.split("x")[0]) % 16, 0)
+        self.assertEqual(int(ic.SIZE.split("x")[1]) % 16, 0)
+
+    def test_full_run_writes_page_and_never_touches_pipeline_images(self):
+        from pipeline import image_compare as ic
+        before = sorted(p.name for p in (self.out / "vid" / "images").iterdir())
+        with mock.patch.dict("os.environ", {"OPENAI_API_KEY": "test-key"}), \
+             mock.patch("pipeline.image_compare.requests.post", return_value=self._ok()) as post:
+            page = ic.run("vid", n_shots=3, qualities=["low", "medium"], yes=True)
+        self.assertEqual(post.call_count, 6)
+        sent = post.call_args.kwargs["json"]["prompt"]
+        self.assertIn("scene", sent)
+        self.assertIn("plain cream", sent)  # same prompt the real stage sends
+        html_text = page.read_text()
+        self.assertIn("Gemini (current)", html_text)
+        self.assertIn("OpenAI medium", html_text)
+        self.assertEqual(before, sorted(p.name for p in (self.out / "vid" / "images").iterdir()))
+        self.assertEqual((page.parent / "shot_001_openai_low.png").read_bytes(), b"openai")
+
+    def test_refuses_without_key_over_cap_or_without_yes(self):
+        from pipeline import image_compare as ic
+        from pipeline.common import StageError
+        with mock.patch.dict("os.environ", {"OPENAI_API_KEY": ""}):
+            with self.assertRaises(StageError):
+                ic.run("vid", n_shots=2, yes=True)
+        with mock.patch.dict("os.environ", {"OPENAI_API_KEY": "k"}):
+            with self.assertRaises(StageError):  # 20 shots x 3 qualities is over the cap
+                ic.run("vid", n_shots=20, qualities=["low", "medium", "high"], yes=True)
+            with mock.patch("builtins.input", return_value="n"), \
+                 mock.patch("pipeline.image_compare.requests.post") as post:
+                with self.assertRaises(StageError):
+                    ic.run("vid", n_shots=2)
+                post.assert_not_called()
+
+    def test_one_failed_image_does_not_stop_the_run(self):
+        from pipeline import image_compare as ic
+        bad = mock.Mock(status_code=400, text="nope")
+        with mock.patch.dict("os.environ", {"OPENAI_API_KEY": "k"}), \
+             mock.patch("pipeline.image_compare.requests.post", side_effect=[bad, self._ok()]):
+            page = ic.run("vid", n_shots=2, qualities=["low"], yes=True)
+        self.assertIn("failed", page.read_text())

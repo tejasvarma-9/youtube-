@@ -385,6 +385,17 @@ Every script opens with a hook about the viewer, asks its question within about 
 
 The image count is the cost lever. In the first minute, where most viewers decide to leave, a new picture appears about every sentence (`FAST_START_SECONDS=60`, `FAST_START_SHOT_SECONDS=3`). After that, `MIN_SHOT_SECONDS=8` keeps each picture on screen for at least 8 seconds. A 10-minute video gets roughly 85 to 95 pictures, about $1.55 in batch images. Pictures are one idea each, with expressive faces and no drawn words or numbers (changed 2026-10-06 after comparing with Ink Explainer, which shows about 30 pictures in its first minute).
 
+## Test another image provider (Gemini vs OpenAI)
+
+Only if you want to see whether a cheaper image model can match your look. It spends about 12 cents and never touches a video's real pictures.
+
+1. Add `OPENAI_API_KEY=...` to `.env` on your Mac (never paste it in chat).
+2. Run: `python -m pipeline.image_compare stock-market-lost-trillions`
+3. It prints the estimated cost and asks `Spend this? [y/N]`. It refuses above $0.50.
+4. Open `out/_image_compare/stock-market-lost-trillions/index.html`. Each of 6 shots shows Gemini | OpenAI low | OpenAI medium, from the exact same prompt.
+
+Prices in the script are estimates from public trackers, not OpenAI's own table. The model name and size can be changed with `COMPARE_OPENAI_MODEL` and `COMPARE_OPENAI_SIZE`.
+
 ## Settings you can put in `.env`
 
 | Setting | Default | |
