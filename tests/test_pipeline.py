@@ -1058,6 +1058,26 @@ class FlatThumbnailTests(unittest.TestCase):
         low = [img.getpixel((x, y)) for x in range(0, 1280, 4) for y in range(380, 700, 4)]
         self.assertTrue(any(g > 140 and r < 60 for r, g, b in low), "the drawing is shown below the headline")
 
+    def test_scene_compose_size_and_busy_share(self):
+        from PIL import Image
+        from pipeline import s8_thumbnail as t
+        out = self.tmp / "s.png"
+        busy = t.compose_scene(self._art(), "A PRICE FALL MOVES NO CASH", out)
+        self.assertEqual(Image.open(out).size, (1280, 720))
+        self.assertEqual(busy, 0.0)  # plain pale art: nothing dark under the headline
+
+    def test_stage_scene_uses_its_own_art_file(self):
+        from pipeline import s8_thumbnail as t
+        from pipeline.common import Video
+        (self.tmp / "out" / "vid").mkdir(parents=True)
+        (self.tmp / "out" / "vid" / "metadata.json").write_text(json.dumps({
+            "thumbnail_text": "TEST TEXT", "thumbnail_subject": "a scene", "thumbnail_subject_scene": "a busy trading floor"}))
+        with mock.patch.object(config, "OUT", self.tmp / "out"), mock.patch.object(config, "THUMB_LOOK", "scene"):
+            t.run(Video("vid"), stub=True)
+        d = self.tmp / "out" / "vid"
+        self.assertTrue((d / "thumbnail_art_scene.png").exists())
+        self.assertTrue((d / "thumbnail.png").exists())
+
     def test_one_line_headline_makes_only_last_word_red(self):
         from PIL import Image
         from pipeline import s8_thumbnail as t

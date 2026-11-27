@@ -139,6 +139,95 @@ def compose_flat(art_path, headline: str, out_path) -> None:
     img.save(out_path)
 
 
+SCENE_FONTS = [
+    "/System/Library/Fonts/Supplemental/Comic Sans MS Bold.ttf",
+    "/Library/Fonts/Comic Sans MS Bold.ttf",
+]
+THUMB_SCENE_EXTRA = (
+    "This is a YouTube thumbnail in the style of a rich, detailed cartoon scene: a full environment with depth (a room, a "
+    "street, a trading floor, whatever fits the idea), vivid colors and strong lighting, drawn large. The characters are "
+    "plain white round-headed stick figures exactly like the rest of the video, with clear exaggerated emotions, and there "
+    "can be a small crowd of them. Keep the upper 25 percent of the picture empty background only (wall, sky or ceiling "
+    "color) with no characters, props or details in it, because a headline goes there. Nothing cut off at the edges. "
+    "No text, no letters, no numbers, no logos, no real brands or real people."
+)
+
+
+def scene_style() -> str:
+    return config.style_suffix("a detailed full-scene background") + " " + THUMB_SCENE_EXTRA
+
+
+def _scene_font(size: int):
+    for f in SCENE_FONTS:
+        try:
+            return ImageFont.truetype(f, size)
+        except OSError:
+            continue
+    return _font(size)
+
+
+def compose_scene(art_path, headline: str, out_path) -> float:
+    """Scene look: the detailed art fills the frame, a soft dark gradient sits behind the headline (so it reads on any
+    background), headline in big hand-drawn-style letters, yellow with a thick black edge, first line white. Returns
+    the share of busy (dark, detailed) pixels in the headline rows, so the stage can warn when the art ignored the
+    empty-top request."""
+    art = Image.open(art_path).convert("RGB")
+    k = max(W / art.width, H / art.height)
+    art = art.resize((round(art.width * k), round(art.height * k)), Image.LANCZOS)
+    l, t = (art.width - W) // 2, (art.height - H) // 2
+    img = art.crop((l, t, l + W, t + H)).convert("RGBA")
+    scrim = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    sd = ImageDraw.Draw(scrim)
+    for y in range(round(H * 0.42)):
+        sd.line([(0, y), (W, y)], fill=(0, 0, 0, round(150 * (1 - y / (H * 0.42)) ** 1.5)))
+    img = Image.alpha_composite(img, scrim).convert("RGB")
+    d = ImageDraw.Draw(img)
+    max_w = W - 90
+    for size in range(150, 70, -6):
+        font = _scene_font(size)
+        lines = _balanced(d, headline, font, max_w) or _wrap(d, headline, font, max_w)
+        if len(lines) <= 2 and all(d.textlength(ln, font=font) <= max_w for ln in lines):
+            break
+    else:
+        lines = _wrap(d, headline, font, max_w)[:2]
+    y, bottom = 18, 18
+    for i, line in enumerate(lines):
+        bb = d.textbbox((0, 0), line, font=font)
+        x = (W - (bb[2] - bb[0])) // 2 - bb[0]
+        d.text((x, y - bb[1]), line, font=font, fill=YELLOW if i == len(lines) - 1 else WHITE, stroke_width=9, stroke_fill=INK)
+        y += (bb[3] - bb[1]) + round(size * 0.14)
+        bottom = y
+    rows = art.crop((0, 0, art.width, max(1, round(bottom / H * art.height)))).convert("L")
+    busy = sum(1 for v in rows.getdata() if v < 70) / max(1, rows.width * rows.height)
+    if config.LOGO.exists():
+        logo = Image.open(config.LOGO).convert("RGBA").resize((76, 76), Image.LANCZOS)
+        mask = Image.new("L", logo.size, 0)
+        ImageDraw.Draw(mask).ellipse([0, 0, 75, 75], fill=255)
+        ImageDraw.Draw(img).ellipse([W - 76 - 26, H - 76 - 26, W - 20, H - 20], fill=WHITE, outline=INK, width=4)
+        img.paste(logo, (W - 76 - 22, H - 76 - 22), mask)
+    img.save(out_path)
+    return busy
+
+
+def _scene_art(video: Video, meta: dict, art, stub: bool) -> None:
+    subject = meta.get("thumbnail_subject_scene") or meta.get("thumbnail_subject_flat") or meta["thumbnail_subject"]
+    if stub:
+        stubs.image_card(subject, art, label="thumbnail (scene)")
+        return
+    prompt = f"{subject}\n\n{scene_style()}"
+    if config.IMAGE_PROVIDER == "openai":
+        if not config.OPENAI_API_KEY:
+            raise StageError("IMAGE_PROVIDER=openai but OPENAI_API_KEY is empty in .env.")
+        art.write_bytes(s5_images.openai_generate(prompt, config.OPENAI_API_KEY, quality=config.THUMB_OPENAI_QUALITY))
+        return
+    if not config.GOOGLE_API_KEY:
+        raise StageError("GOOGLE_API_KEY is empty. Put it in the .env file (see README), or run with --stub.")
+    data = s5_images.generate_sync(s5_images.build_request(prompt, []))
+    if not data:
+        raise StageError("Gemini returned no thumbnail image. Edit thumbnail_subject_scene in metadata.json and re-run.")
+    art.write_bytes(data)
+
+
 def compose(art_path, headline: str, out_path, before: str = "", after: str = "") -> None:
     """Art fills the frame; a dark fade at the top carries a big outlined headline."""
     art = Image.open(art_path).convert("RGB")
@@ -206,6 +295,16 @@ def _flat_art(video: Video, meta: dict, art, stub: bool) -> None:
 
 def run(video: Video, stub: bool = False) -> None:
     meta = video.read_json("metadata.json")
+    if config.THUMB_LOOK == "scene":
+        art = video.path("thumbnail_art_scene.png")
+        if not art.exists():
+            _scene_art(video, meta, art, stub)
+        busy = compose_scene(art, meta["thumbnail_text"], video.path("thumbnail.png"))
+        log("  thumbnail.png written, scene look (delete thumbnail_art_scene.png to redraw the art; THUMB_LOOK=classic goes back)")
+        if busy > 0.06:
+            log("  WARNING: the art is busy right under the headline, so letters may be hard to read. "
+                "Look at the thumbnail; if it is crowded, delete thumbnail_art_scene.png and run the stage again.")
+        return
     if config.THUMB_LOOK == "flat":
         art = video.path("thumbnail_art_flat.png")
         if not art.exists():
