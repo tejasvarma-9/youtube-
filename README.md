@@ -429,3 +429,7 @@ The Start button works through a small server that only answers on this Mac (127
 ### Section colors in the pictures
 
 From the next video made with `shots`, each section of a video (a color lasts at least `SECTION_MIN_SECONDS`, default 40, and changes at a paragraph break) gets its own soft background color instead of plain white. The color is stored as `background` on each shot in `shots.json`, so you can edit it by hand before running `images`. Videos made earlier have no `background` and keep the white look. Set `SECTION_MIN_SECONDS=0` to turn it off. The main object is also asked to be larger so it reads on a phone. Pictures still carry no words or numbers; on-screen labels, numbered section tags and number bars (as on the Plain Paisa channel) would need an overlay step in `assemble` and are not built yet.
+
+### Voice speed
+
+A viewer said the voice was slow, so the finished voice is now played 10% faster (pitch unchanged, using ffmpeg) and the pauses between sentences and paragraphs are a little shorter. Change it with `VOICE_SPEED` in `.env` (default 1.10, range 1.0 to 1.3; above about 1.2 it sounds rushed) and `SENTENCE_GAP_S` / `PARAGRAPH_GAP_S`. The recorded audio in `audio/` is cached untouched, so trying another speed costs nothing: run `python -m pipeline voice <slug>` again. The picture timings are made from the voice timeline, so for a video whose pictures already exist, re-run from `shots` (or accept the old pace).

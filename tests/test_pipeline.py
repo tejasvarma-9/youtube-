@@ -860,5 +860,23 @@ class SectionColorTests(unittest.TestCase):
         self.assertIn("No text of any kind", config.style_suffix(config.SECTION_BACKGROUNDS[0]))
 
 
+class VoiceSpeedTests(unittest.TestCase):
+    def test_speed_up_shortens_without_changing_format(self):
+        import shutil
+        if not shutil.which("ffmpeg"):
+            self.skipTest("no ffmpeg")
+        from pipeline import s3_voiceover
+        sec = 3
+        pcm = b"".join(int(8000 * __import__("math").sin(i * 0.05)).to_bytes(2, "little", signed=True)
+                       for i in range(s3_voiceover.RATE * sec))
+        out = s3_voiceover._speed_up(pcm, 1.25)
+        self.assertEqual(len(out) % 2, 0)
+        ratio = (len(pcm) / 2) / (len(out) / 2)
+        self.assertAlmostEqual(ratio, 1.25, delta=0.05)
+
+    def test_speed_is_clamped(self):
+        self.assertTrue(1.0 <= config.VOICE_SPEED <= 1.3)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -16,6 +16,7 @@ import re
 import struct
 import sys
 import time
+import subprocess
 import wave
 
 import requests
@@ -95,6 +96,9 @@ def run(video: Video, stub: bool = False, force: bool = False) -> None:
             frames = frames[int(start * RATE) * 2:int(end * RATE) * 2]
             bounds = [b - start for b in bounds]
             end -= start
+        if not stub and config.VOICE_SPEED > 1.0:
+            frames = _speed_up(frames, config.VOICE_SPEED)
+            bounds = [x / config.VOICE_SPEED for x in bounds]
         edges = [0.0] + bounds + [len(frames) / 2 / RATE]
         for r, a, b in zip(chunk, edges, edges[1:]):
             r["start"], r["end"] = round(t + a, 3), round(t + b, 3)
@@ -337,6 +341,20 @@ def _strip_wav_header(data: bytes) -> bytes:
             return data[i + 8:i + 8 + size]
         i += 8 + size + (size & 1)
     raise StageError("Couldn't read the audio returned by Text-to-Speech.")
+
+
+def _speed_up(frames: bytes, speed: float) -> bytes:
+    """Play the voice faster without raising its pitch (ffmpeg's atempo filter)."""
+    from .s6_assemble import find_ffmpeg
+    ffmpeg, _ = find_ffmpeg()
+    if not ffmpeg:
+        raise StageError("ffmpeg is needed to speed up the voice (VOICE_SPEED). Install it, or set VOICE_SPEED=1.0.")
+    res = subprocess.run([ffmpeg, "-v", "error", "-f", "s16le", "-ar", str(RATE), "-ac", "1", "-i", "pipe:0",
+                          "-filter:a", f"atempo={speed:.4f}", "-f", "s16le", "-ar", str(RATE), "-ac", "1", "pipe:1"],
+                         input=frames, capture_output=True)
+    if res.returncode != 0 or not res.stdout:
+        raise StageError(f"Speeding up the voice failed: {res.stderr.decode(errors='replace')[:300]}")
+    return res.stdout
 
 
 def _silence(seconds: float) -> bytes:

@@ -48,8 +48,12 @@ GEMINI_TTS_MIN_INTERVAL_S = float(env("GEMINI_TTS_MIN_INTERVAL_S", "0"))  # rais
 TTS_VOICE = env("TTS_VOICE", "en-US-Chirp3-HD-Charon")  # chirp only
 TTS_LANGUAGE = "en-US"
 TTS_PACE = float(env("TTS_PACE", "1.0"))  # chirp only: 0.25 to 2.0
-SENTENCE_GAP_S = 0.18  # silence between sentences
-PARAGRAPH_GAP_S = 0.45  # extra silence between paragraphs
+SENTENCE_GAP_S = float(env("SENTENCE_GAP_S", "0.14"))  # silence between sentences
+PARAGRAPH_GAP_S = float(env("PARAGRAPH_GAP_S", "0.35"))  # extra silence between paragraphs
+# Speed-up applied to the finished voice (pitch stays the same). 1.0 = as recorded. A viewer said the
+# voice was slow, so the default is 10% faster; above about 1.2 it starts to sound rushed.
+# The recorded audio is cached untouched, so changing this costs nothing: only the next "voice" run uses it.
+VOICE_SPEED = min(1.3, max(1.0, float(env("VOICE_SPEED", "1.10"))))
 
 # Images: Gemini 3.1 Flash Lite Image ("Nano Banana 2 Lite"), batch mode.
 IMAGE_MODEL = env("IMAGE_MODEL", "gemini-3.1-flash-lite-image")
