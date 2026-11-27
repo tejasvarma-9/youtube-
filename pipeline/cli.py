@@ -175,6 +175,8 @@ def cmd_doctor() -> int:
         problems.append("Claude Code ('claude') isn't on your PATH; the script, fact-check, shots and metadata steps need it.")
     if not config.GOOGLE_API_KEY:
         problems.append("GOOGLE_API_KEY is empty in .env (see README step 2).")
+    if config.IMAGE_PROVIDER == "openai" and not config.OPENAI_API_KEY:
+        problems.append("IMAGE_PROVIDER=openai but OPENAI_API_KEY is empty in .env.")
     try:
         import PIL  # noqa: F401
     except ImportError:
@@ -183,7 +185,7 @@ def cmd_doctor() -> int:
         notes.append("faster-whisper isn't installed, so captions can drift from the voice in places: pip install -r requirements.txt")
     if not s6_assemble.find_upscaler():
         notes.append("Image upscaler not installed, so videos look a little soft on big screens (README: 'Sharper images').")
-    if not s5_images.style_refs():
+    if config.IMAGE_PROVIDER != "openai" and not s5_images.style_refs():
         problems.append("assets/style-refs/ has no approved style frames yet (README: 'Pick the style frames').")
     for p in problems:
         print(f"  ✗ {p}")

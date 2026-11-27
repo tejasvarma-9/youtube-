@@ -385,6 +385,16 @@ Every script opens with a hook about the viewer, asks its question within about 
 
 The image count is the cost lever. In the first minute, where most viewers decide to leave, a new picture appears about every sentence (`FAST_START_SECONDS=60`, `FAST_START_SHOT_SECONDS=3`). After that, `MIN_SHOT_SECONDS=8` keeps each picture on screen for at least 8 seconds. A 10-minute video gets roughly 85 to 95 pictures, about $1.55 in batch images. Pictures are one idea each, with expressive faces and no drawn words or numbers (changed 2026-10-06 after comparing with Ink Explainer, which shows about 30 pictures in its first minute).
 
+## Draw the pictures with OpenAI instead of Gemini (optional, off by default)
+
+Nothing changes unless you add `IMAGE_PROVIDER=openai` to `.env`. The OpenAI look is bolder: thick outlines, brighter colors, stick-figure bodies. It is not the Gemini look, so decide by looking at `python -m pipeline.image_compare <video>` first (next section).
+
+- Needs `OPENAI_API_KEY` in `.env`. Quality defaults to `low` (`OPENAI_IMAGE_QUALITY=medium` costs about twice as much and looked almost the same in the first test).
+- Estimated cost: about $0.008 per picture at low, so about $0.70 for 90 pictures, against about $1.51 for Gemini batch. These are estimates from price trackers, not OpenAI's own table. Check your OpenAI usage page for the real bill.
+- OpenAI has no batch mode here. The stage draws 4 pictures at a time, about 4 minutes for 90. Re-running draws only the missing ones.
+- Style frames in `assets/style-refs/` are not sent to OpenAI. Thumbnail art still uses Gemini, so you still need `GOOGLE_API_KEY`.
+- Go back any time by deleting the `IMAGE_PROVIDER` line.
+
 ## Test another image provider (Gemini vs OpenAI)
 
 Only if you want to see whether a cheaper image model can match your look. It spends about 12 cents and never touches a video's real pictures.
@@ -406,6 +416,8 @@ Prices in the script are estimates from public trackers, not OpenAI's own table.
 | `GEMINI_TTS_MODEL` | `gemini-3.8-flash-lite-tts` | The voice model. Each model has its own daily request limit; `gemini-2.5-flash-preview-tts` is a paid fallback ($10 per million audio tokens, about $0.17 a video) |
 | `GEMINI_TTS_CHUNK_CHARS` | `1500` | Text per voice request. Google limits requests per day (100 on the default model), so the script goes out in chunks. Lower it (800) if the voice cuts passages short |
 | `GEMINI_TTS_MIN_INTERVAL_S` | `0` | Seconds to wait between voice requests. Set to `7` if the voice step keeps hitting rate limits |
+| `IMAGE_PROVIDER` | `gemini` | `openai` draws the video pictures with OpenAI (needs `OPENAI_API_KEY`); see the section above |
+| `OPENAI_IMAGE_QUALITY` | `low` | `low`, `medium` or `high`; only used when `IMAGE_PROVIDER=openai` |
 | `MIN_SHOT_SECONDS` | `8` | Lower means more images and more cost |
 | `FAST_START_SECONDS` | `60` | How long the opening gets faster pictures; `0` turns it off |
 | `FAST_START_SHOT_SECONDS` | `3` | Shortest picture in the opening (in practice about one per sentence) |

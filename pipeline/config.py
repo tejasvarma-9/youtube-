@@ -100,6 +100,31 @@ MAX_SHOT_SECONDS = 18.0
 # Prices used for the cost line in the review package (USD, checked 2026-10-03).
 PRICE_PER_IMAGE_BATCH = 0.0168
 PRICE_PER_IMAGE_SYNC = 0.0336
+# Which service draws the pictures: "gemini" (default, batch mode) or "openai" (no batch, drawn in parallel).
+# Nothing changes until IMAGE_PROVIDER=openai is in .env. Thumbnail art always uses Gemini.
+IMAGE_PROVIDER = env("IMAGE_PROVIDER", "gemini").lower()
+OPENAI_API_KEY = env("OPENAI_API_KEY")
+OPENAI_IMAGE_MODEL = env("OPENAI_IMAGE_MODEL", "gpt-image-2.5-flare")
+OPENAI_IMAGE_QUALITY = env("OPENAI_IMAGE_QUALITY", "low")  # low, medium or high
+OPENAI_IMAGE_SIZE = env("OPENAI_IMAGE_SIZE", "1536x864")  # 16:9, both edges a multiple of 16
+# Estimated USD per 1536x864 picture, from public price trackers checked 2026-11-27 (about 1 megapixel
+# prices plus 30% for the larger size). Not OpenAI's own table: your OpenAI usage page has the real bill.
+PRICE_PER_IMAGE_OPENAI = {"low": 0.008, "medium": 0.0176, "high": 0.07}
+
+
+def image_price(sync: bool = False) -> float:
+    """Estimated dollars for one video picture with the chosen provider (thumbnail art is separate)."""
+    if IMAGE_PROVIDER == "openai":
+        return PRICE_PER_IMAGE_OPENAI.get(OPENAI_IMAGE_QUALITY, PRICE_PER_IMAGE_OPENAI["medium"])
+    return PRICE_PER_IMAGE_SYNC if sync else PRICE_PER_IMAGE_BATCH
+
+
+def image_price_label(sync: bool = False) -> str:
+    if IMAGE_PROVIDER == "openai":
+        return f"OpenAI {OPENAI_IMAGE_QUALITY}"
+    return "normal" if sync else "batch"
+
+
 TTS_FREE_CHARS_PER_MONTH = 1_000_000  # chirp
 PRICE_PER_TTS_CHAR = 0.00003  # chirp
 GEMINI_TTS_USD_PER_M_AUDIO_TOKENS = 6.00  # flash-lite-tts; doubles from 2027-01-01

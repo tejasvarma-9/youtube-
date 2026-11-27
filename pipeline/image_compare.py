@@ -29,6 +29,7 @@ import requests
 
 from . import config
 from .common import StageError, Video, log
+from . import s5_images
 from .s5_images import _prompt, style_refs
 
 API = "https://api.openai.com/v1/images/generations"
@@ -66,19 +67,7 @@ def request_body(prompt: str, quality: str) -> dict:
 
 
 def generate(prompt: str, quality: str, key: str) -> bytes:
-    for attempt in range(4):
-        res = requests.post(API, headers={"Authorization": f"Bearer {key}"},
-                            json=request_body(prompt, quality), timeout=240)
-        if res.status_code in (429, 500, 503) and attempt < 3:
-            time.sleep(2 ** (attempt + 2))
-            continue
-        if res.status_code != 200:
-            raise StageError(f"OpenAI returned {res.status_code}: {res.text[:400]}")
-        data = (res.json().get("data") or [{}])[0]
-        if not data.get("b64_json"):
-            raise StageError("OpenAI answered without an image (no b64_json).")
-        return base64.b64decode(data["b64_json"])
-    raise StageError("OpenAI kept refusing after 4 tries.")
+    return s5_images.openai_generate(prompt, key, quality=quality, model=MODEL, size=SIZE)
 
 
 def build_page(slug: str, rows: list[dict], qualities: list[str], refs_note: str) -> str:

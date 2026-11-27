@@ -958,3 +958,69 @@ class ImageCompareTests(unittest.TestCase):
              mock.patch("pipeline.image_compare.requests.post", side_effect=[bad, self._ok()]):
             page = ic.run("vid", n_shots=2, qualities=["low"], yes=True)
         self.assertIn("failed", page.read_text())
+
+
+class ImageProviderTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        (self.tmp / "out" / "vid" / "images").mkdir(parents=True)
+        shots = [{"id": i, "scene": f"scene {i}", "background": "plain cream"} for i in range(1, 6)]
+        (self.tmp / "out" / "vid" / "shots.json").write_text(json.dumps({"shots": shots}))
+        for patcher in (mock.patch.object(config, "OUT", self.tmp / "out"),
+                        mock.patch.object(config, "STYLE_REFS", self.tmp / "refs")):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def _ok(self):
+        res = mock.Mock(status_code=200)
+        res.json.return_value = {"data": [{"b64_json": base64.b64encode(b"png-bytes").decode()}]}
+        return res
+
+    def test_default_provider_is_gemini_with_old_prices(self):
+        self.assertEqual(config.IMAGE_PROVIDER, "gemini")
+        self.assertEqual(config.image_price(False), config.PRICE_PER_IMAGE_BATCH)
+        self.assertEqual(config.image_price(True), config.PRICE_PER_IMAGE_SYNC)
+        self.assertEqual(config.image_price_label(False), "batch")
+
+    def test_openai_prices_follow_quality(self):
+        with mock.patch.object(config, "IMAGE_PROVIDER", "openai"), mock.patch.object(config, "OPENAI_IMAGE_QUALITY", "low"):
+            self.assertEqual(config.image_price(), config.PRICE_PER_IMAGE_OPENAI["low"])
+            self.assertEqual(config.image_price_label(), "OpenAI low")
+            self.assertLess(config.image_price(), config.PRICE_PER_IMAGE_BATCH)
+
+    def test_openai_stage_draws_only_missing_pictures_and_sends_prompt(self):
+        from pipeline import s5_images
+        from pipeline.common import Video
+        (self.tmp / "out" / "vid" / "images" / "shot_002.png").write_bytes(b"old")
+        with mock.patch.object(config, "IMAGE_PROVIDER", "openai"), mock.patch.object(config, "OPENAI_API_KEY", "k"), \
+             mock.patch("pipeline.s5_images.requests.post", return_value=self._ok()) as post:
+            s5_images.run(Video("vid"))
+        self.assertEqual(post.call_count, 4)  # 5 shots, one already there
+        prompts = [c.kwargs["json"]["prompt"] for c in post.call_args_list]
+        self.assertTrue(all("plain cream" in p and "scene" in p for p in prompts))
+        self.assertEqual(post.call_args.kwargs["json"]["quality"], "low")
+        self.assertEqual((self.tmp / "out" / "vid" / "images" / "shot_002.png").read_bytes(), b"old")
+        self.assertEqual((self.tmp / "out" / "vid" / "images" / "shot_005.png").read_bytes(), b"png-bytes")
+
+    def test_openai_stage_needs_key_and_reports_failed_shots(self):
+        from pipeline import s5_images
+        from pipeline.common import StageError, Video
+        with mock.patch.object(config, "IMAGE_PROVIDER", "openai"), mock.patch.object(config, "OPENAI_API_KEY", ""):
+            with self.assertRaises(StageError):
+                s5_images.run(Video("vid"))
+        bad = mock.Mock(status_code=400, text="nope")
+        with mock.patch.object(config, "IMAGE_PROVIDER", "openai"), mock.patch.object(config, "OPENAI_API_KEY", "k"), \
+             mock.patch("pipeline.s5_images.requests.post", return_value=bad):
+            with self.assertRaises(StageError) as cm:
+                s5_images.run(Video("vid"))
+        self.assertIn("5 images didn't come back", str(cm.exception))
+
+    def test_gemini_path_is_untouched_when_provider_unset(self):
+        from pipeline import s5_images
+        from pipeline.common import StageError, Video
+        with mock.patch.object(config, "GOOGLE_API_KEY", ""), mock.patch("pipeline.s5_images.requests.post") as post:
+            with self.assertRaises(StageError) as cm:
+                s5_images.run(Video("vid"))
+        self.assertIn("GOOGLE_API_KEY", str(cm.exception))
+        post.assert_not_called()

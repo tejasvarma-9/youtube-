@@ -117,6 +117,58 @@ def _batch_results(op: dict, keys: list[str]) -> dict[str, dict]:
     return out
 
 
+OPENAI_API = "https://api.openai.com/v1/images/generations"
+OPENAI_WORKERS = 4  # pictures drawn at the same time; one at a time would take about 11 s each
+
+
+def openai_generate(prompt: str, key: str, quality: str | None = None, model: str | None = None,
+                    size: str | None = None) -> bytes:
+    """One picture from OpenAI. Retries rate limits and server hiccups; raises StageError otherwise."""
+    body = {"model": model or config.OPENAI_IMAGE_MODEL, "prompt": prompt, "n": 1,
+            "size": size or config.OPENAI_IMAGE_SIZE, "quality": quality or config.OPENAI_IMAGE_QUALITY}
+    for attempt in range(4):
+        res = requests.post(OPENAI_API, headers={"Authorization": f"Bearer {key}"}, json=body, timeout=240)
+        if res.status_code in (429, 500, 503) and attempt < 3:
+            time.sleep(2 ** (attempt + 2))
+            continue
+        if res.status_code != 200:
+            raise StageError(f"OpenAI returned {res.status_code}: {res.text[:400]}")
+        data = (res.json().get("data") or [{}])[0]
+        if not data.get("b64_json"):
+            raise StageError("OpenAI answered without an image (no b64_json).")
+        return base64.b64decode(data["b64_json"])
+    raise StageError("OpenAI kept refusing after 4 tries.")
+
+
+def _run_openai(video: Video, todo: list[dict], out_dir: Path) -> None:
+    """Draw the missing pictures with OpenAI, a few at a time. Re-running only draws what is missing."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    if not config.OPENAI_API_KEY:
+        raise StageError("IMAGE_PROVIDER=openai but OPENAI_API_KEY is empty. Put it in the .env file, or remove IMAGE_PROVIDER to use Gemini.")
+    if style_refs():
+        log("  note: style frames in assets/style-refs/ are not sent to OpenAI; the look comes from the prompt text.")
+    log(f"  images: drawing {len(todo)} with OpenAI {config.OPENAI_IMAGE_MODEL}, quality {config.OPENAI_IMAGE_QUALITY}, "
+        f"about ${len(todo) * config.image_price():.2f} (estimate)")
+    failed = []
+
+    def one(s: dict):
+        try:
+            return s, openai_generate(_prompt(s), config.OPENAI_API_KEY), None
+        except StageError as e:
+            return s, None, e
+
+    with ThreadPoolExecutor(max_workers=OPENAI_WORKERS) as pool:
+        for n, (s, img, err) in enumerate(pool.map(one, todo), 1):
+            if img:
+                (out_dir / f"shot_{s['id']:03d}.png").write_bytes(img)
+            else:
+                failed.append(s["id"])
+                log(f"    shot {s['id']}: {err}")
+            log(f"    {n}/{len(todo)}")
+    _report_failures(video, failed)
+
+
 def _prompt(shot: dict) -> str:
     """Built from the scene at request time, so an edited scene in shots.json is what gets drawn."""
     return f"{shot['scene']}\n\n{config.style_suffix(shot.get('background', ''))}"
@@ -137,6 +189,9 @@ def run(video: Video, stub: bool = False, sync: bool = False) -> None:
     if stub:
         for s in todo:
             stubs.image_card(s["scene"], out_dir / f"shot_{s['id']:03d}.png", label=f"#{s['id']}")
+        return
+    if config.IMAGE_PROVIDER == "openai":
+        _run_openai(video, todo, out_dir)
         return
     if not config.GOOGLE_API_KEY:
         raise StageError("GOOGLE_API_KEY is empty. Put it in the .env file (see README), or run with --stub.")

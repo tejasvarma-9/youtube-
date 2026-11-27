@@ -214,14 +214,14 @@ def estimate(v: Video, a) -> list[tuple[str, float, float]]:
                                     int(MAX_VOICE_RETRIES * MAX_VOICE_LINES_PER_RETRY * chunk_s * CHARS_PER_SECOND))
     rows.append((f"Voice ({provider}, about {seconds / 60:.0f} min)" + (" — already recorded" if tl else ""),
                  0.0 if tl else config.voice_cost(provider, seconds, chars), voice_retry))
-    price = config.PRICE_PER_IMAGE_SYNC if a.sync else config.PRICE_PER_IMAGE_BATCH
+    price = config.image_price(a.sync)
     if (d / "shots.json").exists():
         shots = json.loads((d / "shots.json").read_text())["shots"]
         missing = sum(not (d / "images" / f"shot_{s['id']:03d}.png").exists() for s in shots)
         label = f"Pictures ({missing} of {len(shots)} still to draw)"
     else:
         missing = _estimated_shots(seconds)
-        label = f"Pictures (about {missing}, {'normal' if a.sync else 'batch'} price)"
+        label = f"Pictures (about {missing}, {config.image_price_label(a.sync)} price)"
     rows.append((label, missing * price, MAX_IMAGE_RETRIES * MAX_IMAGES_PER_RETRY * price))
     rows.append(("Thumbnail art (1 picture)", 0.0 if (d / "thumbnail_art.png").exists() else config.PRICE_PER_IMAGE_SYNC, 0.0))
     q = config.voice_cost(provider, 5.0, 80)
@@ -562,7 +562,7 @@ def agent_images(v: Video, a, rep: Report, forced: bool) -> None:
         s4_shots.run(v, stub=a.stub)
         rep.checked.append("wrote the shot list (shots.json)")
     shots = v.read_json("shots.json")["shots"]
-    price = config.PRICE_PER_IMAGE_SYNC if a.sync else config.PRICE_PER_IMAGE_BATCH
+    price = config.image_price(a.sync)
     missing = [s for s in shots if not (v.dir / "images" / f"shot_{s['id']:03d}.png").exists()]
     if missing and not a.stub:
         rep.spend(len(missing) * price, f"drawing {len(missing)} pictures")

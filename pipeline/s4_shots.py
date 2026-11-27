@@ -147,5 +147,5 @@ def run(video: Video, stub: bool = False) -> None:
         if not style.exists():
             import json as _json
             style.write_text(_json.dumps({"interactive": True, "captions": "word"}))
-    est = len(shots) * config.PRICE_PER_IMAGE_BATCH
-    log(f"  shots: {len(shots)} images, {min(lengths):.1f}s to {max(lengths):.1f}s each, about ${est:.2f} in batch images")
+    est = len(shots) * config.image_price()
+    log(f"  shots: {len(shots)} images, {min(lengths):.1f}s to {max(lengths):.1f}s each, about ${est:.2f} in {config.image_price_label()} images")
