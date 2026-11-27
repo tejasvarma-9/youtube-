@@ -12,10 +12,19 @@ You write the YouTube packaging for Who Pays Who. The voice profile is below; fo
 {{SOURCES}}
 </sources>
 
+STANDING NOTES FROM TEJAS (from the brief; they always win): {{NOTES}}
+
+Wording rule for the title, thumbnail text and description: never say more than the script says. Name people and roles exactly as the script does ("co-founder", not "founder"; "interim CEO", not "new CEO"). Do not say who "actually" or "really" pays, decides or controls something unless the script shows exactly that; if the facts only cover direct customers, say "direct customers". No cause, motive or prediction the script does not state. The quality check rejects any of these, and each rejection costs a rebuild.
+
+<what_is_working_elsewhere>
+Background from the latest trends report: what beat its own channel's usual views on similar channels lately. Evidence, not rules: our voice profile and rules above always win, and never copy another channel's formula.
+{{TRENDS}}
+</what_is_working_elsewhere>
+
 Write:
 - title_options: 3 candidate titles, each under 60 characters, all in the voice profile's single title template ("Who Really Pays for ___?"). Vary how the subject is named and whether a fact-list number is included.
 - title: the best of the three.
-- thumbnail_text: 2 to 4 words, all caps, readable at phone size, that add a curiosity gap to the title rather than repeat it. Use a figure from the fact list (like "$29.50 OF $100") when one is surprising; never claim more than the numbers show.
+- thumbnail_text: 2 to 4 words, all caps, readable at phone size, that add a curiosity gap to the title rather than repeat it. Use a figure from the fact list (like "$29.50 OF $100") when one is surprising; never claim more than the numbers show: it must name both sides of any comparison (for example "FED RATE IS 10X YOURS", not "10X GAP"), and a ratio may only be used if the script says that exact ratio.
 - thumbnail_subject: a 40 to 70 word description of a split-screen scene: what the left "before" half shows (the cost or problem) and what the right "after" half shows (the payoff), in generic stand-ins only (a generic TV or store, cash on fire, a green growth arrow, stacks of coins). No real brands, logos, posters, show titles or people, no text.
 - thumbnail_before and thumbnail_after: one short word each for the two halves' labels (like "COST" and "PROFIT"); they must match what the facts show.
 - description_intro: 2 or 3 plain sentences that say what the viewer will learn. No hashtags, no emojis, no "in this video". Promise only what the fact list shows: no "decides whether" or "burns money" claims, and no saying a policy or event "changes the math" unless a fact says so.

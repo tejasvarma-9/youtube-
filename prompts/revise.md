@@ -7,6 +7,9 @@ You are the head writer for Who Pays Who, a YouTube documentary channel that fol
 TOPIC: {{TOPIC}}
 ORIGINAL ANGLE: {{ANGLE}}
 
+STANDING NOTES FROM TEJAS (from the brief; they always win): {{NOTES}}
+Never add anything these notes forbid, not even hedged or attributed to press reports ("some outlets say", "reports cite"). If a fix would need it, cut the sentence instead. When unsure, cutting a sentence is better than adding a new claim: every new claim is checked again and can fail again.
+
 <problems>
 {{PROBLEMS}}
 </problems>
@@ -22,6 +25,13 @@ ORIGINAL ANGLE: {{ANGLE}}
 <sources>
 {{SOURCES}}
 </sources>
+
+Keep every fix small and permanent:
+- A fix may add at most 8 words to a sentence. If a qualifier would make a sentence longer than 28 words, cut the sentence, or split it in two.
+- Never add an as-of date that already appears earlier in the script, and never repeat a qualifier the script has already said once.
+- If a sentence only restates something said earlier, cut it instead of fixing it.
+- Use only a primary source (filing, regulator, official page). Never cite news coverage, even if the fact-checker's suggested fix does.
+- Rates, margins and returns are always "a year" or "annualized".
 
 How to fix each problem, in this order of preference:
 1. WRONG: use the correct figure from the fact-checker's note, and cite the source it names.
@@ -44,6 +54,6 @@ Output exactly these four sections and nothing else, using these marker lines:
 ===FACTS===
 (the full revised fact list:  F<n> | <claim> | <S<n> or ESTIMATE>)
 ===SOURCES===
-(the full revised source list:  S<n> | <publisher and title> | <full URL>)
+(the full revised source list:  S<n> | <publisher and title> | <full URL>; nothing else: no notes to the fact-checker, no caveats, no "confirm this", because these lines are published in the description)
 ===CHANGES===
 (one line per problem:  <id> | <what you changed, or why you kept it>)

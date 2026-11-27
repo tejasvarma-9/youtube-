@@ -48,19 +48,43 @@ GEMINI_TTS_MIN_INTERVAL_S = float(env("GEMINI_TTS_MIN_INTERVAL_S", "0"))  # rais
 TTS_VOICE = env("TTS_VOICE", "en-US-Chirp3-HD-Charon")  # chirp only
 TTS_LANGUAGE = "en-US"
 TTS_PACE = float(env("TTS_PACE", "1.0"))  # chirp only: 0.25 to 2.0
-SENTENCE_GAP_S = 0.18  # silence between sentences
-PARAGRAPH_GAP_S = 0.45  # extra silence between paragraphs
+SENTENCE_GAP_S = float(env("SENTENCE_GAP_S", "0.14"))  # silence between sentences
+PARAGRAPH_GAP_S = float(env("PARAGRAPH_GAP_S", "0.35"))  # extra silence between paragraphs
+# Speed-up applied to the finished voice (pitch stays the same). 1.0 = as recorded. A viewer said the
+# voice was slow, so the default is 10% faster; above about 1.2 it starts to sound rushed.
+# The recorded audio is cached untouched, so changing this costs nothing: only the next "voice" run uses it.
+VOICE_SPEED = min(1.3, max(1.0, float(env("VOICE_SPEED", "1.10"))))
 
 # Images: Gemini 3.1 Flash Lite Image ("Nano Banana 2 Lite"), batch mode.
 IMAGE_MODEL = env("IMAGE_MODEL", "gemini-3.1-flash-lite-image")
 IMAGE_BATCH_SIZE = 10  # requests per batch job, keeps inline results under 20 MB
-IMAGE_STYLE_SUFFIX = (
+IMAGE_STYLE_TEMPLATE = (
     "Style: simple 2D hand-drawn explainer illustration, round-headed stick figures, "
-    "thick black outlines, flat colors, light shading, white or light gray-blue background, "
+    "thick black outlines, flat colors, light shading, {background}, "
     "16:9 aspect ratio. No photorealism, no 3D, no real logos, no real people. "
     "No text of any kind: no letters, words, numbers, labels, signs, banners or symbols anywhere in the picture; "
     "papers, scrolls, signs, bags and clothing stay plain and blank."
 )
+# Videos made before section colors (no "background" on a shot) keep the old white look.
+DEFAULT_BACKGROUND = "white or light gray-blue background"
+IMAGE_STYLE_SUFFIX = IMAGE_STYLE_TEMPLATE.format(background=DEFAULT_BACKGROUND)
+# Each section of a video gets its own soft background color so the video feels like it moves
+# through parts. Light colors only, so the black outlines stay readable. Money green and warning
+# red are kept for costs, profits and risk (voice.md), so they are not in this list.
+SECTION_BACKGROUNDS = [
+    "plain warm cream background filling the whole frame",
+    "plain soft sky-blue background filling the whole frame",
+    "plain light peach background filling the whole frame",
+    "plain soft lavender background filling the whole frame",
+    "plain pale butter-yellow background filling the whole frame",
+    "plain light gray-blue background filling the whole frame",
+]
+SECTION_MIN_SECONDS = float(env("SECTION_MIN_SECONDS", "40"))  # a color lasts at least this long; set 0 to turn section colors off
+
+
+def style_suffix(background: str = "") -> str:
+    """The style text added to every picture request; background is the shot's own color phrase, if it has one."""
+    return IMAGE_STYLE_TEMPLATE.format(background=background or DEFAULT_BACKGROUND)
 # Each image stays on screen for at least this long. Lower = more images = more cost.
 # 8 s after a fast first minute is roughly 85 to 95 images per 10-minute video, about $1.55.
 MIN_SHOT_SECONDS = float(env("MIN_SHOT_SECONDS", "8"))
@@ -106,6 +130,7 @@ WORDS_HARD_MAX = 2100  # about 11.5 minutes; longer scripts must be cut
 SHORT_WIDTH, SHORT_HEIGHT = 1080, 1920
 SHORT_MIN_S, SHORT_MAX_S = 20.0, 58.0   # YouTube allows up to 3 minutes; under a minute holds attention best
 SHORT_END_CARD_S = 0.0                   # no end card: a Short that points viewers elsewhere stops being shown
+SHORT_SKIP_OPENING_S = 30.0              # Shorts are cut from the middle: the full video's opening stays new to anyone who clicks through
 SHORTS_COUNT = 3                         # per video; the command accepts 2 to 4
 
 DISCLAIMER = (

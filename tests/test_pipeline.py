@@ -765,6 +765,17 @@ class ShortsPlanning(unittest.TestCase):
         self.assertEqual(sh.written_problems("S", "Hilton kept running the hotel.", "Why keep it?", "T", "D", "Who runs it?"), [])
         self.assertTrue(sh.written_problems("S", "x", "Why keep it?", "T", "D", "No question mark"))
 
+    def test_shorts_skip_the_videos_opening(self):
+        from pipeline import s11_shorts as sh
+        rows = self.rows()
+        self.assertEqual(sh.opening_sentences(rows, stub=True), set())
+        opening = sh.opening_sentences(rows)          # starts at 0, 6, 12, 18, 24 are inside the first 30 s
+        self.assertEqual(opening, {1, 2, 3, 4, 5})
+        plan = {"shorts": [{"hook_text": "Free, so who paid?", "title": "Who paid $776 million?", "sentences": [2, 6],
+                            "description_intro": "A look at the money.", "tags": ["a"]}]}
+        _, problems = sh.validate_plan(plan, rows, 1)
+        self.assertIn("first 30 seconds", " ".join(problems))
+
     def test_review_applies_fixes_and_blocks_rejects(self):
         from pipeline import s11_shorts as sh
         from pipeline.common import Video
@@ -815,6 +826,56 @@ class ShortsPlanning(unittest.TestCase):
             self.assertLessEqual(len(ch), 3)
         flat = [k for ch in sh.chunk_words("a b c d e f g") for k in ch]
         self.assertEqual(flat, list(range(7)))
+
+
+class SectionColorTests(unittest.TestCase):
+    def _video(self):
+        sents, shots = [], []
+        for i in range(1, 25):  # 24 sentences, 10 s each, a new paragraph every 4
+            sents.append({"i": i, "start": (i - 1) * 10.0, "paragraph": (i - 1) // 4, "text": f"S{i}."})
+            shots.append({"id": i, "start": (i - 1) * 10.0, "end": i * 10.0, "sentences": [i]})
+        return sents, shots
+
+    def test_color_changes_at_paragraph_breaks_after_minimum(self):
+        from pipeline.s4_shots import assign_backgrounds
+        sents, shots = self._video()
+        with mock.patch.object(config, "SECTION_MIN_SECONDS", 40.0):
+            assign_backgrounds(shots, sents)
+        colors = [s["background"] for s in shots]
+        self.assertEqual(colors[0], config.SECTION_BACKGROUNDS[0])
+        self.assertEqual(len(set(colors[:4])), 1)  # one section: 40 s
+        self.assertEqual(colors[4], config.SECTION_BACKGROUNDS[1])  # next paragraph starts the next color
+        for a, b in zip(shots, shots[1:]):  # never changes in the middle of a paragraph
+            if a["background"] != b["background"]:
+                self.assertNotEqual(sents[a["sentences"][-1] - 1]["paragraph"], sents[b["sentences"][0] - 1]["paragraph"])
+
+    def test_off_switch_and_old_videos_keep_white(self):
+        from pipeline.s4_shots import assign_backgrounds
+        sents, shots = self._video()
+        with mock.patch.object(config, "SECTION_MIN_SECONDS", 0.0):
+            assign_backgrounds(shots, sents)
+        self.assertTrue(all("background" not in s for s in shots))
+        self.assertIn("white or light gray-blue", config.style_suffix(""))
+        self.assertIn("lavender", config.style_suffix(config.SECTION_BACKGROUNDS[3]))
+        self.assertIn("No text of any kind", config.style_suffix(config.SECTION_BACKGROUNDS[0]))
+
+
+class VoiceSpeedTests(unittest.TestCase):
+    def test_speed_up_shortens_without_changing_format(self):
+        import shutil
+        if not shutil.which("ffmpeg"):
+            self.skipTest("no ffmpeg")
+        from pipeline import s3_voiceover
+        sec = 3
+        pcm = b"".join(int(8000 * __import__("math").sin(i * 0.05)).to_bytes(2, "little", signed=True)
+                       for i in range(s3_voiceover.RATE * sec))
+        out = s3_voiceover._speed_up(pcm, 1.25)
+        self.assertEqual(len(out) % 2, 0)
+        ratio = (len(pcm) / 2) / (len(out) / 2)
+        self.assertAlmostEqual(ratio, 1.25, delta=0.05)
+
+    def test_speed_is_clamped(self):
+        self.assertTrue(1.0 <= config.VOICE_SPEED <= 1.3)
 
 
 if __name__ == "__main__":

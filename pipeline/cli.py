@@ -8,7 +8,7 @@ import re
 import shutil
 import sys
 
-from . import (align, config, s1_script, s2_factcheck, s3_voiceover, s4_shots, s5_images, s6_assemble, s7_metadata, s11_shorts,
+from . import (align, autopilot, config, crew, s1_script, s2_factcheck, s3_voiceover, s4_shots, s5_images, s6_assemble, s7_metadata, s11_shorts,
                s8_thumbnail, s9_review, s10_qc)
 from .common import StageError, Video, log, slugify
 
@@ -137,6 +137,12 @@ def cmd_auto(a) -> Video:
         log(f"[auto] Finished, but the quality check FAILED ({len(qc['failures'])} problems). "
             f"See out/{slug}/qc.md before approving.")
     log(f"Review: open out/{slug}/review/REVIEW.md")
+    if getattr(a, "shorts", False):
+        if qc["passed"]:
+            log("\n[auto] Building the Shorts from the finished script")
+            s11_shorts.run(v, count=config.SHORTS_COUNT, stub=a.stub)
+        else:
+            log("[auto] Shorts skipped: the quality check did not pass.")
     return v
 
 
@@ -209,6 +215,7 @@ def main(argv=None) -> int:
     au.add_argument("--notes", help="anything else the writer should know")
     au.add_argument("--words", type=int, default=config.TARGET_WORDS)
     au.add_argument("--slug")
+    au.add_argument("--shorts", action="store_true", help="after a passing quality check, also build the Shorts (still need your approval to post)")
 
     r = sub.add_parser("run", help="run every stage that isn't done yet")
     r.add_argument("slug")
@@ -234,6 +241,48 @@ def main(argv=None) -> int:
     sh.add_argument("--only", type=int, help="build only this Short number")
     sh.add_argument("--plan-only", action="store_true", help="choose the Shorts and stop, so you can read the plan first")
     sh.add_argument("--replan", action="store_true", help="choose the Shorts again, even if a plan exists")
+    cr = sub.add_parser("crew", help="the agent crew: topic scout to a GO / NO-GO verdict (never approves or uploads)")
+    cr.add_argument("--topic", help="skip the topic scout and make this topic")
+    cr.add_argument("--angle", help="the one original insight, calculation or comparison")
+    cr.add_argument("--character", help='recurring example character, e.g. "Bob, a first-time gym owner"')
+    cr.add_argument("--notes", help="anything else the writer should know")
+    cr.add_argument("--words", type=int, default=config.TARGET_WORDS)
+    cr.add_argument("--slug", help="resume this video, or the name for the new one")
+    cr.add_argument("--pick-top", action="store_true", help="take the topic scout's first topic without asking")
+    cr.add_argument("--from-agent", choices=crew.AGENTS[1:], help="run this agent and every one after it again")
+    cr.add_argument("--yes", action="store_true", help="don't ask before spending money (the estimate is still printed)")
+    cr.add_argument("--count", type=int, default=config.SHORTS_COUNT, help="how many Shorts, 2 to 4")
+    cr.add_argument("--replan", action="store_true", help="choose the Shorts again, even if a plan exists")
+    rs = sub.add_parser("shorts-results", help="record how a Short did after 48 hours (the Shorts picker learns from it)")
+    rs.add_argument("slug")
+    rs.add_argument("n", type=int, help="the Short's number")
+    rs.add_argument("--views", type=int)
+    rs.add_argument("--avg", help="average view duration, e.g. 0:21")
+    rs.add_argument("--length", help="the Short's length, e.g. 0:45 (default: measured from short.mp4)")
+    rs.add_argument("--swiped", help="percent swiped away, e.g. 49")
+    rs.add_argument("--subs", type=int, help="subscribers gained")
+    rs.add_argument("--when", help="date the numbers were read, e.g. 2026-10-24 (default: today)")
+    tr = sub.add_parser("trends", help="what is working for similar channels, and proposed changes for ours (YouTube Data API, free)")
+    tr.add_argument("--apply", type=int, metavar="N", help="apply proposal N of the latest trends report to its prompt file")
+    tr.add_argument("--login", action="store_true", help="sign in to Google again (read-only YouTube access), then stop")
+    tr.add_argument("--queries", help="comma-separated YouTube searches to use instead of the defaults")
+    tr.add_argument("--days", type=int, default=150, help="only videos published in the last this many days")
+    au = sub.add_parser("autopilot", help="run the crew, fix what is safe to fix, run it again; stops at GO or when it needs you")
+    au.add_argument("--topic", help="the topic (empty: the topic scout picks the first one)")
+    au.add_argument("--slug", help="continue this video")
+    au.add_argument("--angle")
+    au.add_argument("--character")
+    au.add_argument("--notes")
+    au.add_argument("--words", type=int, default=config.TARGET_WORDS)
+    au.add_argument("--count", type=int, default=config.SHORTS_COUNT, help="how many Shorts, 2 to 4")
+    au.add_argument("--cap", type=float, default=autopilot.CAP_USD, help="stop when this run has spent this many dollars")
+    au.add_argument("--from-agent", choices=crew.AGENTS[1:], help="start by running this agent and every one after it again")
+    au.add_argument("--max-cycles", type=int, default=autopilot.MAX_CYCLES)
+    sv = sub.add_parser("serve", help="the dashboard with a Start button (this Mac only); what Start Crew.command opens")
+    sv.add_argument("--port", type=int)
+    sv.add_argument("--no-open", action="store_true")
+    db = sub.add_parser("dashboard", help="open the crew dashboard: which agent is doing what, live")
+    db.add_argument("--no-open", action="store_true", help="only rebuild the page")
     sub.add_parser("status", help="list videos and which stages are done")
     sub.add_parser("doctor", help="check that this Mac is set up")
     vt = sub.add_parser("voice-test", help="a short sample in several voices to choose from (about 1 cent)")
@@ -278,6 +327,27 @@ def main(argv=None) -> int:
         elif a.cmd == "shorts":
             s11_shorts.run(Video(a.slug), count=a.count, only=a.only, plan_only=a.plan_only, replan=a.replan,
                            stub=a.stub, force=a.force)
+        elif a.cmd == "crew":
+            crew.cmd_crew(a)
+        elif a.cmd == "shorts-results":
+            crew.cmd_shorts_results(a)
+        elif a.cmd == "trends":
+            from . import trends
+            if a.login:
+                trends.oauth_token(force_login=True)
+            elif a.apply:
+                trends.apply(a.apply, stub=a.stub)
+            else:
+                trends.run(stub=a.stub, queries=[q.strip() for q in a.queries.split(",")] if a.queries else None, days=a.days)
+        elif a.cmd == "autopilot":
+            autopilot.run(a)
+        elif a.cmd == "serve":
+            from . import serve
+            serve.run(a)
+        elif a.cmd == "dashboard":
+            from . import dashboard
+            p = dashboard.build() if a.no_open else dashboard.open_page()
+            log(f"  {p}")
         elif a.cmd == "status":
             cmd_status()
         elif a.cmd == "doctor":

@@ -139,6 +139,15 @@ def lint_script(script: str, facts: str) -> dict:
     elif words < config.WORDS_MIN:
         warnings.append(f"Length is {words} words (about {minutes:.1f} minutes); the target is {config.WORDS_MIN} to {config.WORDS_MAX}. "
                         "Under about 8 minutes, YouTube won't place mid-roll ads once the channel is monetized.")
+    for sent in re.split(r"(?<=[.!?])\s+", script):
+        n = len(sent.split())
+        if n > 34:
+            errors.append(f"Long sentence ({n} words, split it or cut it; aim for 28 or fewer): \"{' '.join(sent.split()[:12])}...\"")
+    for m in re.finditer(r"\bas of ([A-Z][a-z]+ \d{1,2}, \d{4})", script):
+        pass
+    dates = re.findall(r"\bas of ([A-Z][a-z]+ \d{1,2}, \d{4})", script)
+    for d in sorted({d for d in dates if dates.count(d) > 3}):
+        warnings.append(f"The date \"{d}\" is repeated {dates.count(d)} times; say it once where the figure first appears.")
     for pat, why in BANNED:
         for m in re.finditer(pat, script, re.I):
             errors.append(f"Policy: \"{m.group(0)}\" ({why}).")

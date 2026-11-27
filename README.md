@@ -288,9 +288,63 @@ python -m pipeline shorts <slug> --only 2        # rebuild just Short 2
 - **The text check:** before anything is built, a separate Claude check that did not write them reads each Short's on-screen line, title and description against its narration and the full script. It passes them, rewrites them (and checks the rewrite again), or rejects the Short. A rejected Short is not built; REVIEW.md says why. If you edit a line in `shorts/plan.json` by hand, the next run checks it again.
 - **Why it's safe:** no new narration is written, so the fact-check carries over. The command refuses to run until the full video's fact-check has passed. The on-screen line, title and description may only use numbers that are in the Short's own sentences.
 - **Cost:** nothing extra. Claude's choice and the text check use your Claude plan; no new voice or pictures are made.
+- **Shorts come from the middle of the video.** The picker may not use sentences from the first 30 seconds (`SHORT_SKIP_OPENING_S` in `config.py`), so the full video's opening is still new to anyone who taps through from a Short. Hotel video retention showed returning viewers leaving the full video about twice as fast in its first 16 seconds, which fits (but does not prove) people hearing the opening twice. Compare returning-viewer retention on the next full videos before treating this as settled.
 - **Output:** `out/<slug>/shorts/REVIEW.md` lists each Short with its on-screen line, the text check's verdict, its narration and quality check. Each `short_N/` folder has `short.mp4`, `description.txt` (with sources, disclaimer and #shorts) and `metadata.json` (title, tags). Only upload Shorts that REVIEW.md marks PASS.
 - **You don't have to publish them all.** Watch them and pick, and post them a few days apart. If a Short uses a picture the full video's quality check flagged, REVIEW.md says so.
 - **Upload:** Studio, Create, Upload videos, drag in `short.mp4` (YouTube treats a vertical video under 3 minutes as a Short). Title from `metadata.json`, description from `description.txt`, not made for kids, altered content No. Under **Related video**, pick the full video so viewers can tap through to it.
+
+## The crew (one command, ending in a GO / NO-GO recommendation)
+
+```bash
+python -m pipeline crew                                   # topic scout first: it proposes 3 to 5 topics, you pick one
+python -m pipeline crew --pick-top                        # take the scout's first topic
+python -m pipeline crew --topic "How X makes money" --angle "..."   # skip the scout
+python -m pipeline crew --slug <slug>                     # resume: finished agents skip themselves
+python -m pipeline crew --slug <slug> --from-agent images # run that agent and every later one again
+python -m pipeline crew ... --yes                         # don't ask before spending (the estimate is still printed)
+python -m pipeline shorts-results <slug> <n>              # 48 hours after a Short goes up: record how it did
+```
+
+Seven agents run in order. Each writes `out/<slug>/agents/<agent>.md` (what it checked, what it fixed, what it could not fix) and a `.json` copy for the overseer.
+
+| Agent | What it does | Retries |
+|---|---|---|
+| topic_scout (new) | 3 to 5 topics, each with demand seen on the web, one angle and at least 3 primary sources. Skips topics already in `out/`. Lists go to `out/_crew/`. Web search only (no vidIQ). | 1 re-ask |
+| script_factcheck | script, then fact-check with the independent audit; a failed check is revised | 3 revisions |
+| voice_captions | voice, then a speech recognizer listens: caption lines far off the voice and runs of words it never heard (garbled or skipped speech) get those lines re-recorded | 2 |
+| images | shot list and pictures, then Claude looks at every picture; pictures with a serious problem are moved aside and redrawn, with the problem added to their scene | 2 |
+| packaging | assemble, metadata, thumbnail, the full quality check and the review package; fixes the quality check gives for the title, thumbnail text or description are applied, then it checks again | 2 rounds |
+| shorts | the Shorts command, plus: a REJECTED Short is chosen again with the reviewer's reasons (never reusing another Short's sentences or its own rejected ones), then a Short QC (20 to 58 s, captions incl. the spoken question vs what is heard, loudness, the on-screen text fitting, and a frame sheet Claude checks for cut-off pictures and unreadable text), one rebuild at most, and `shorts/short_N/upload.md` | 2 re-picks, 1 rebuild |
+| overseer (new) | a fresh Claude call that saw none of the above reads every report, re-checks the 3 to 5 riskiest claims at their sources, and writes `agents/VERDICT.md`: GO or NO-GO for the full video and for each Short, with exact fixes | none |
+
+- **Nobody approves but you.** No agent runs `approve`, uploads or posts. The overseer only recommends. Some things are never GO whatever it says: a stub run, a failed fact-check or quality check, a claim it found overstated at its source, a Short that was not built or failed its QC, or any Short while the full video is NO-GO.
+- **Nothing is deleted.** Anything an agent replaces (a picture, a recording, metadata.json, a rejected Short's file) moves to `out/<slug>/_replaced_<date>/` under the same path.
+- **Money:** before anything that costs money, the crew prints what it will spend now and the most extra if every retry is used, and asks. With no one to ask it stops unless you gave `--yes`. Claude steps use your Claude plan.
+- **When an agent can't fix something** the crew stops there, says what is wrong and how to fix it, and writes a NO-GO verdict. Fix it, then run `python -m pipeline crew --slug <slug>`.
+- **A re-run re-checks and fixes; it never rewrites a script or redraws pictures that exist and passed.** For that, use `run --from` as before.
+- **Dashboard:** `python -m pipeline dashboard` opens `out/_crew/dashboard.html`, one page for every video the crew has worked on. For each video it shows the seven agents in order (waiting, running, passed, stopped or already done), how long each took, what it checked, fixed and couldn't fix, what it spent, the Shorts, the overseer's GO / NO-GO with its fixes, and the live log of the run. While a run is going it reloads itself every few seconds; the crew opens it when you start a run. It only shows: nothing on it approves or uploads.
+- **Notes never reach viewers:** the packaging agent stops if the public description contains notes meant for the pipeline ("the fact-checker should confirm it", "TODO", "placeholder"). Source lines must be just publisher, title and URL.
+- **Shorts, after the first real trial:** a rejected Short is chosen again without the other Shorts' sentences, but it may keep some of its own (often the fix is the same claim plus the sentence stating its limits); only an exact repeat is refused. A Short whose rewritten lines weren't confirmed gets one more rewrite round. The spoken question's captions are timed from what is heard. The channel's own readings ("one way to read this") keep their framing in a Short.
+- **Shorts results:** `shorts-results` asks for views, average view duration, length, % swiped away and subscribers (or pass `--views --avg --length --swiped --subs`). It saves `out/<slug>/shorts/results.json` and writes `out/SHORTS_RESULTS.md`, every Short on the channel ranked by how much of it people watched. The Shorts picker reads these results every time it chooses Shorts.
+
+## Trends: what is working for similar channels (weekly)
+
+```bash
+python -m pipeline trends              # search, measure, compare, propose; changes nothing
+python -m pipeline trends --apply 2    # apply proposal 2 from the latest report to its prompt file
+```
+
+- **What it measures:** it searches YouTube for business and money explainers (long videos and Shorts from the last 150 days), reads each channel's recent uploads, and scores every video against its own channel's median views. An outlier got at least 2x, a flop at most 0.5x. Raw views mostly measure how big a channel is; the ratio measures the video.
+- **What Claude compares:** titles, thumbnails (it opens the images), length, topic and age of the outliers against the flops on the same channels. A pattern counts only if the outliers share it and the flops lack it. It can't watch videos, so it says nothing about hooks or scripts.
+- **What changes:** nothing, until you say so. The report's short notes for writers go to the topic scout, the title and thumbnail writer and the Shorts picker as background for 21 days. Concrete edits to `prompts/` or `voice.md` are shown as before and after with their evidence; `--apply N` makes one, keeps the old file in `out/_crew/_replaced_<date>/prompts/`, and you commit it yourself.
+- **Stay distinct:** every proposal must say how it keeps Who Pays Who recognisably itself. A proposal that copies another channel's title formula, thumbnail layout or character is dropped: YouTube's inauthentic-content policy demonetizes templated, mass-produced videos.
+- **Setup (once): Google sign-in.** Google now gives many accounts only "AQ." keys, which the YouTube Data API refuses, so trends signs in with your Google account instead (read-only YouTube access):
+  1. Turn on "YouTube Data API v3": https://console.cloud.google.com/apis/library/youtube.googleapis.com
+  2. https://console.cloud.google.com/auth/overview in the same project. Get started: app name "Who Pays Who pipeline", your email, audience External, add your own Gmail as a test user.
+  3. Clients, Create client, type **Desktop app**, Create, Download JSON. Save it in this folder as `client_secret.json` (git ignores it).
+  4. `python -m pipeline trends --login` opens your browser once. The token is saved in `token_youtube.json` (git ignores it). While the app is in Testing mode Google asks you to sign in again about every 7 days; trends says when.
+  A classic `AIza...` key in `.env` as `YOUTUBE_API_KEY` also works, if your account can still make one. Free either way: one run uses about 1,500 of the 10,000 quota units a day. Never paste keys or tokens in chat.
+- **Output:** `out/_crew/trends_<date>.md` (read this), `trends_<date>.json`, and the thumbnails and raw data in `out/_crew/trends/<date>/`.
 
 ## Rules to remember
 
@@ -356,3 +410,26 @@ python -m unittest discover tests
 ## Credits
 
 The title, thumbnail-text and chapter checks follow the approach of [youtube-agent-skill](https://github.com/Jakeschincariol/youtube-agent-skill) by Jake Schincariol (MIT). No code was copied from it, so its license does not apply here. Its `/yt-*` skills can still be installed on the Mac separately, for research and post-publish analysis.
+
+
+## Autopilot: no commands
+
+Double-click **Start Crew.command** in this folder. It opens the dashboard with a **Start** box in your browser. Type a topic (or leave it empty and the topic scout picks one) and press Start. That is the only thing you do.
+
+The autopilot (`python -m pipeline autopilot`, which Start runs for you) runs the crew, reads the verdict and every agent's report, fixes what is safe to fix, and runs again from the first agent the fix touches. It stops when:
+
+- everything is GO: the dashboard says "Ready for your review". You watch the video and run `approve` yourself;
+- what is left needs a decision from you: the dashboard lists it in plain words, and "Run it again" restarts after you have fixed it;
+- it has spent the limit ($2.00 per video, `--cap`) or used its 4 cycles (`--max-cycles`).
+
+What it may change by itself: a picture the checker rejected twice (Claude writes a new scene, at most 2 times per picture, old picture moved to `_replaced_<date>/`), a note to the pipeline that landed in `sources.txt` (the id, publisher, title and URL are kept exactly), and a Short that was rejected (chosen again, then from scratch). It never edits a fact, a number, a claim, a source or the script. It never runs `approve`, never uploads, never posts.
+
+The Start button works through a small server that only answers on this Mac (127.0.0.1) and needs a one-time token from the page it served. Leave the Start Crew window open while you use the page; a run keeps going if you close it, but the page cannot show it. Notes are in `out/<slug>/agents/AUTOPILOT.md`.
+
+### Section colors in the pictures
+
+From the next video made with `shots`, each section of a video (a color lasts at least `SECTION_MIN_SECONDS`, default 40, and changes at a paragraph break) gets its own soft background color instead of plain white. The color is stored as `background` on each shot in `shots.json`, so you can edit it by hand before running `images`. Videos made earlier have no `background` and keep the white look. Set `SECTION_MIN_SECONDS=0` to turn it off. The main object is also asked to be larger so it reads on a phone. Pictures still carry no words or numbers; on-screen labels, numbered section tags and number bars (as on the Plain Paisa channel) would need an overlay step in `assemble` and are not built yet.
+
+### Voice speed
+
+A viewer said the voice was slow, so the finished voice is now played 10% faster (pitch unchanged, using ffmpeg) and the pauses between sentences and paragraphs are a little shorter. Change it with `VOICE_SPEED` in `.env` (default 1.10, range 1.0 to 1.3; above about 1.2 it sounds rushed) and `SENTENCE_GAP_S` / `PARAGRAPH_GAP_S`. The recorded audio in `audio/` is cached untouched, so trying another speed costs nothing: run `python -m pipeline voice <slug>` again. The picture timings are made from the voice timeline, so for a video whose pictures already exist, re-run from `shots` (or accept the old pace).

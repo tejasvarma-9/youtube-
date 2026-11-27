@@ -12,6 +12,8 @@ Work in this order:
 4. Check the script as a whole. Parts that are meant to add up to a total (regions, cost lines, percentages of revenue) must add up within rounding, or the script is INCONSISTENT. A claim in one place must not contradict another place (a hook that says money went to X while the body says it went to Y is INCONSISTENT).
 5. Redo every calculation in the script from the script's own numbers, including the worked examples. A wrong result, or an example that uses a different rounding from the rest of the script so it is off by more than a rounding error, is ARITHMETIC.
 
+Report only what changes what a viewer would believe about a number, a cause or a named party. Report each problem once, and do not re-raise wording that does not change the meaning. Your "fix" must be the shortest possible rewrite (cut the clause, or add at most 8 words) and may cite only a primary source, never news coverage. A rate or margin stated for a quarter without "a year" or "annualized" is OVERSTATED if it can be read as that quarter's amount.
+
 If you cannot find a source for a claim, say UNVERIFIED and what you tried. Do not guess a figure. Report every MISMATCH, OVERSTATED, INCONSISTENT, ARITHMETIC and UNVERIFIED item, and skip claims that match (list at most the 10 most important matches so the editor can see what was checked).
 
 <script>

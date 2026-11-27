@@ -16,19 +16,21 @@ import re
 import struct
 import sys
 import time
+import subprocess
 import wave
 
 import requests
 
 from . import align, config, s2_factcheck
-from .common import StageError, Video, log, sentences_with_paragraphs
+from .common import StageError, Video, log, retire, sentences_with_paragraphs
 
 RATE = 24000
 TTS_URL = "https://texttospeech.googleapis.com/v1/text:synthesize"
 
 
 def redo(video: Video, phrase: str, stub: bool = False) -> int:
-    """Forget the cached recording of every chunk containing the phrase, so `voice` records it again."""
+    """Set aside the cached recording of every chunk containing the phrase (moved to _replaced_<date>/,
+    never deleted), so `voice` records it again."""
     provider = config.TTS_PROVIDER
     voice = "stub" if stub else (config.GEMINI_TTS_VOICE if provider == "gemini" else config.TTS_VOICE)
     voice_id = f"{provider}:{config.GEMINI_TTS_MODEL}:{voice}" if provider == "gemini" else f"{provider}:{voice}"
@@ -42,7 +44,7 @@ def redo(video: Video, phrase: str, stub: bool = False) -> int:
         key = hashlib.sha1(f"{voice_id}|{config.TTS_PACE}|{config.GEMINI_TTS_STYLE}|{text}".encode()).hexdigest()[:12]
         wav = video.path("audio", f"{key}.wav")
         if wav.exists():
-            wav.unlink()
+            retire(wav)
             gone += 1
     return gone
 
@@ -94,6 +96,9 @@ def run(video: Video, stub: bool = False, force: bool = False) -> None:
             frames = frames[int(start * RATE) * 2:int(end * RATE) * 2]
             bounds = [b - start for b in bounds]
             end -= start
+        if not stub and config.VOICE_SPEED > 1.0:
+            frames = _speed_up(frames, config.VOICE_SPEED)
+            bounds = [x / config.VOICE_SPEED for x in bounds]
         edges = [0.0] + bounds + [len(frames) / 2 / RATE]
         for r, a, b in zip(chunk, edges, edges[1:]):
             r["start"], r["end"] = round(t + a, 3), round(t + b, 3)
@@ -336,6 +341,20 @@ def _strip_wav_header(data: bytes) -> bytes:
             return data[i + 8:i + 8 + size]
         i += 8 + size + (size & 1)
     raise StageError("Couldn't read the audio returned by Text-to-Speech.")
+
+
+def _speed_up(frames: bytes, speed: float) -> bytes:
+    """Play the voice faster without raising its pitch (ffmpeg's atempo filter)."""
+    from .s6_assemble import find_ffmpeg
+    ffmpeg, _ = find_ffmpeg()
+    if not ffmpeg:
+        raise StageError("ffmpeg is needed to speed up the voice (VOICE_SPEED). Install it, or set VOICE_SPEED=1.0.")
+    res = subprocess.run([ffmpeg, "-v", "error", "-f", "s16le", "-ar", str(RATE), "-ac", "1", "-i", "pipe:0",
+                          "-filter:a", f"atempo={speed:.4f}", "-f", "s16le", "-ar", str(RATE), "-ac", "1", "pipe:1"],
+                         input=frames, capture_output=True)
+    if res.returncode != 0 or not res.stdout:
+        raise StageError(f"Speeding up the voice failed: {res.stderr.decode(errors='replace')[:300]}")
+    return res.stdout
 
 
 def _silence(seconds: float) -> bytes:
